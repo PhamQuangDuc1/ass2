@@ -1,0 +1,211 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Student RAG Chatbot";
+}
+
+<section class="app-workspace">
+    <header class="workspace-header">
+        <div>
+            <p class="eyebrow">ASS2 PRN222</p>
+            <h1>Student RAG Chatbot</h1>
+        </div>
+        <div class="user-card">
+            <strong>@Model.CurrentUserName</strong>
+            <span>
+                @Model.CurrentRole
+                @if (Model.CurrentRole == "Teacher" && Model.CurrentUserIsDepartmentHead)
+                {
+                    <text> - Truong bo mon @Model.CurrentManagedDepartment</text>
+                }
+            </span>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="notice notice-success">@Model.StatusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="notice notice-danger">@Model.ErrorMessage</div>
+    }
+
+    <nav class="feature-tabs" aria-label="Chuc nang">
+        <button type="button" class="tab-button active" data-tab-target="chatTab">Chat</button>
+        <button type="button" class="tab-button" data-tab-target="documentsTab">Tai lieu</button>
+        @if (Model.CanSeeUploadTab)
+        {
+            <button type="button" class="tab-button" data-tab-target="uploadTab">Upload</button>
+        }
+        <button type="button" class="tab-button" data-tab-target="benchmarkTab">Benchmark</button>
+    </nav>
+
+    <section class="tab-panel active" id="chatTab">
+        <div class="tab-heading">
+            <div>
+                <p class="eyebrow">Chat & Hoi dap</p>
+                <h2>Hoi theo ngu canh tai lieu</h2>
+            </div>
+            <div class="tab-actions">
+                <span class="live-pill" id="liveStatus">Connecting</span>
+                <span class="session-chip">Session @Model.SessionId[..8]</span>
+            </div>
+        </div>
+
+        <section class="chat-stream" id="chatStream" aria-live="polite">
+            <article class="message message-bot">
+                <strong>Bot</strong>
+                <p>Nhap cau hoi ve Razor Pages, SignalR, RAG hoac tai lieu vua upload. Cau tra loi se kem nguon tai lieu.</p>
+            </article>
+        </section>
+
+        <form class="chat-input" id="chatForm">
+            <input id="questionInput" autocomplete="off" placeholder="VD: SignalR dung de lam gi trong bai nay?" />
+            <button type="submit">Gui</button>
+        </form>
+    </section>
+
+    <section class="tab-panel" id="documentsTab" hidden>
+        <div class="tab-heading">
+            <div>
+                <p class="eyebrow">Quan ly tai lieu</p>
+                <h2>Danh sach tai lieu da index</h2>
+            </div>
+            <span class="session-chip">@Model.Documents.Count tai lieu</span>
+        </div>
+
+        <div class="document-list document-list-wide" id="documentList">
+            @foreach (var document in Model.Documents)
+            {
+                <article class="document-item">
+                    <strong>@document.Title</strong>
+                    <span>@document.Department - @document.Subject - @document.Chapter</span>
+                    <small>@document.FileName | GV: @document.Teacher | Upload: @document.UploadedBy | @document.UploadedAt.ToString("dd/MM HH:mm")</small>
+                </article>
+            }
+        </div>
+    </section>
+
+    @if (Model.CanSeeUploadTab)
+    {
+        <section class="tab-panel" id="uploadTab" hidden>
+            <div class="tab-heading">
+                <div>
+                    <p class="eyebrow">Upload & Index</p>
+                    <h2>Them tai lieu vao kho</h2>
+                </div>
+            </div>
+
+            <div class="role-policy">
+                <strong>Quyen upload cua ban</strong>
+                <span>
+                    @if (Model.CurrentRole == "Admin")
+                    {
+                        <text>Admin duoc upload tai lieu cho moi bo mon.</text>
+                    }
+                    else
+                    {
+                        <text>Ban la truong bo mon @Model.CurrentManagedDepartment, chi upload duoc tai lieu cua bo mon @Model.CurrentManagedDepartment.</text>
+                    }
+                </span>
+            </div>
+
+            <form class="upload-form upload-form-wide" method="post" enctype="multipart/form-data" asp-page-handler="Upload">
+                <div class="form-grid">
+                    <div class="form-row">
+                        <label asp-for="Department">Bo mon</label>
+                        <input asp-for="Department" id="departmentInput" readonly="@(Model.CurrentRole == "Teacher" ? "readonly" : null)" />
+                    </div>
+                    <div class="form-row">
+                        <label asp-for="Subject">Mon hoc</label>
+                        <input asp-for="Subject" />
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-row">
+                        <label asp-for="Chapter">Chuong</label>
+                        <input asp-for="Chapter" />
+                    </div>
+                    <div class="form-row">
+                        <label asp-for="Teacher">Giang vien</label>
+                        <input asp-for="Teacher" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label asp-for="Title">Ten tai lieu</label>
+                    <input asp-for="Title" placeholder="VD: Slide SignalR Chapter 2" />
+                </div>
+
+                <div class="form-row">
+                    <label asp-for="UploadFile">PDF, DOCX, PPTX, TXT</label>
+                    <input asp-for="UploadFile" type="file" accept=".pdf,.docx,.pptx,.ppt,.txt,.md,.csv" />
+                </div>
+
+                <div class="form-row">
+                    <label asp-for="ManualContent">Noi dung/tom tat de index</label>
+                    <textarea asp-for="ManualContent" rows="6" placeholder="Nhap noi dung chinh cua tai lieu de chatbot tra loi chinh xac hon."></textarea>
+                </div>
+
+                <button type="submit" class="primary-action">Upload & index</button>
+            </form>
+        </section>
+    }
+
+    <section class="tab-panel" id="benchmarkTab" hidden>
+        <div class="tab-heading">
+            <div>
+                <p class="eyebrow">RAG benchmark</p>
+                <h2>So sanh model demo</h2>
+            </div>
+            <span class="session-chip">Demo</span>
+        </div>
+
+        <table class="benchmark-table">
+            <thead>
+                <tr>
+                    <th>Model</th>
+                    <th>Precision</th>
+                    <th>Recall</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>multilingual-e5-base</td>
+                    <td>0.82</td>
+                    <td>0.78</td>
+                </tr>
+                <tr>
+                    <td>text-embedding-3-small</td>
+                    <td>0.79</td>
+                    <td>0.81</td>
+                </tr>
+                <tr>
+                    <td>bge-m3</td>
+                    <td>0.85</td>
+                    <td>0.83</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="subject-summary">
+            @foreach (var subject in Model.SubjectCounts)
+            {
+                <span>@subject.Key: @subject.Value</span>
+            }
+        </div>
+    </section>
+</section>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script>
+        window.ass2Chat = {
+            sessionId: '@Model.SessionId'
+        };
+    </script>
+    <script src="~/js/chat.js" asp-append-version="true"></script>
+}

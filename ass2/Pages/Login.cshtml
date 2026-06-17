@@ -1,0 +1,48 @@
+@page
+@model LoginModel
+@{
+    ViewData["Title"] = "Login";
+}
+
+<section class="login-shell">
+    <div class="login-panel">
+        <p class="eyebrow">ASS2 RAG</p>
+        <h1>Dang nhap</h1>
+
+        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+        {
+            <div class="notice notice-danger">@Model.ErrorMessage</div>
+        }
+
+        <form method="post" class="upload-form">
+            <div class="form-row">
+                <label asp-for="Username">Username</label>
+                <input asp-for="Username" autocomplete="username" autofocus />
+            </div>
+            <div class="form-row">
+                <label asp-for="Password">Password</label>
+                <input asp-for="Password" type="password" autocomplete="current-password" />
+            </div>
+            <button type="submit" class="primary-action">Dang nhap</button>
+        </form>
+    </div>
+
+    <div class="login-panel">
+        <div class="section-heading">
+            <h2>Tai khoan demo</h2>
+            <span>password: 123</span>
+        </div>
+        <div class="document-list">
+            @foreach (var user in Model.DemoUsers)
+            {
+                <article class="document-item">
+                    <strong>@user.Username</strong>
+                    <span>@user.DisplayName - @user.Role</span>
+                    <small>
+                        @(user.IsDepartmentHead ? $"Truong bo mon {user.ManagedDepartment}" : "Khong la truong bo mon")
+                    </small>
+                </article>
+            }
+        </div>
+    </div>
+</section>
