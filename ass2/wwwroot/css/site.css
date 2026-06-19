@@ -266,7 +266,7 @@ h3 {
 
 .role-update-form {
   display: grid;
-  grid-template-columns: minmax(150px, 220px) auto minmax(180px, 260px) auto;
+  grid-template-columns: minmax(150px, 220px) minmax(220px, 1fr) auto;
   gap: 10px;
   align-items: end;
   padding-top: 8px;

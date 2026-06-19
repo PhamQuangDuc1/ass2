@@ -14,10 +14,6 @@
             <strong>@Model.CurrentUserName</strong>
             <span>
                 @Model.CurrentRole
-                @if (Model.CurrentRole == "Teacher" && Model.CurrentUserIsDepartmentHead)
-                {
-                    <text> - Truong bo mon @Model.CurrentManagedDepartment</text>
-                }
             </span>
         </div>
     </header>
@@ -154,21 +150,17 @@
                 <span>
                     @if (Model.CurrentRole == "Admin")
                     {
-                        <text>Admin duoc upload tai lieu cho moi bo mon va moi mon hoc.</text>
+                        <text>Admin duoc upload tai lieu cho moi mon hoc.</text>
                     }
                     else
                     {
-                        <text>Ban la truong bo mon @Model.CurrentManagedDepartment, chi upload duoc mon da duoc Admin gan: @string.Join(", ", Model.UploadSubjectOptions).</text>
+                        <text>Ban chi upload duoc mon da duoc Admin gan: @string.Join(", ", Model.UploadSubjectOptions).</text>
                     }
                 </span>
             </div>
 
             <form class="upload-form upload-form-wide" method="post" enctype="multipart/form-data" asp-page-handler="Upload">
                 <div class="form-grid">
-                    <div class="form-row">
-                        <label asp-for="Department">Bo mon</label>
-                        <input asp-for="Department" id="departmentInput" readonly="@(Model.CurrentRole == "Teacher" ? "readonly" : null)" />
-                    </div>
                     <div class="form-row">
                         <label asp-for="Subject">Mon hoc</label>
                         <select asp-for="Subject" disabled="@(Model.UploadSubjectOptions.Count == 0 ? "disabled" : null)">
@@ -178,9 +170,6 @@
                             }
                         </select>
                     </div>
-                </div>
-
-                <div class="form-grid">
                     <div class="form-row">
                         <label asp-for="Chapter">Chuong</label>
                         <input asp-for="Chapter" />
@@ -232,7 +221,6 @@
                         </div>
                         <div class="document-meta">
                             <span>@user.DisplayName</span>
-                            <span>@(user.IsDepartmentHead ? $"Truong bo mon {user.ManagedDepartment}" : "Khong la truong bo mon")</span>
                             <span>Mon duoc gan: @(Model.GetAssignedSubjects(user.Username).Count > 0 ? string.Join(", ", Model.GetAssignedSubjects(user.Username)) : "Chua co")</span>
                         </div>
                         <form method="post" asp-page-handler="UpdateRole" class="role-update-form">
@@ -244,14 +232,6 @@
                                     <option value="Teacher" selected="@(user.Role == "Teacher")">Teacher</option>
                                     <option value="Admin" selected="@(user.Role == "Admin")">Admin</option>
                                 </select>
-                            </div>
-                            <label class="check-row">
-                                <input type="checkbox" name="IsDepartmentHead" value="true" checked="@user.IsDepartmentHead" />
-                                Truong bo mon
-                            </label>
-                            <div class="form-row">
-                                <label for="department-@user.Username">Bo mon quan ly</label>
-                                <input id="department-@user.Username" name="ManagedDepartment" value="@user.ManagedDepartment" placeholder="VD: PRN222" />
                             </div>
                             <div class="form-row">
                                 <label for="subject-@user.Username">Mon hoc quan ly</label>

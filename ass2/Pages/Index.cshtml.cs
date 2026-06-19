@@ -26,7 +26,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
     public string CurrentRole { get; private set; } = string.Empty;
     public bool CurrentUserIsDepartmentHead { get; private set; }
     public string CurrentManagedDepartment { get; private set; } = string.Empty;
-    public bool CanSeeUploadTab => CurrentRole == "Admin" || (CurrentRole == "Teacher" && CurrentUserIsDepartmentHead);
+    public bool CanSeeUploadTab => CurrentRole == "Admin" || (CurrentRole == "Teacher" && authService.GetTeacherSubjects(CurrentUsername).Count > 0);
     public string? StatusMessage { get; private set; }
     public string? ErrorMessage { get; private set; }
     public string ActiveTab { get; private set; } = "chatTab";
@@ -93,6 +93,8 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
             Title = UploadFile?.FileName ?? "Tai lieu moi";
         }
 
+        Department = Subject;
+
         var document = await knowledgeBase.AddDocumentAsync(
             UploadFile,
             Title,
@@ -140,6 +142,10 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
         if (authService.CreateSubject(NewSubject))
         {
             StatusMessage = $"Da tao mon hoc {NewSubject.Trim()}.";
+            await hubContext.Clients.All.SendAsync("SubjectsChanged", new
+            {
+                Subject = NewSubject.Trim()
+            }, cancellationToken);
         }
         else
         {
@@ -165,6 +171,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
         if (authService.AssignTeacherSubject(AssignTeacherUsername, AssignSubject))
         {
             StatusMessage = $"Da gan mon {AssignSubject} cho giao vien {AssignTeacherUsername}.";
+            await NotifyAccountChangedAsync(AssignTeacherUsername, cancellationToken);
         }
         else
         {
@@ -187,7 +194,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
             return Page();
         }
 
-        if (authService.UpdateUserRole(RoleUsername, Role, IsDepartmentHead, ManagedDepartment))
+        if (authService.UpdateUserRole(RoleUsername, Role, false, ""))
         {
             if (Role == "Teacher")
             {
@@ -195,6 +202,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
             }
 
             StatusMessage = $"Da cap nhat role cho tai khoan {RoleUsername}.";
+            await NotifyAccountChangedAsync(RoleUsername, cancellationToken);
         }
         else
         {
@@ -220,9 +228,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
             return false;
         }
 
-        return CurrentUserIsDepartmentHead
-            && string.Equals(CurrentManagedDepartment.Trim(), Department.Trim(), StringComparison.OrdinalIgnoreCase)
-            && authService.GetTeacherSubjects(CurrentUsername)
+        return authService.GetTeacherSubjects(CurrentUsername)
                 .Any(subject => string.Equals(subject, Subject.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
@@ -233,20 +239,15 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
             return "Hoc sinh chi duoc chat va xem tai lieu, khong duoc upload.";
         }
 
-        if (CurrentRole == "Teacher" && !CurrentUserIsDepartmentHead)
-        {
-            return "Giao vien thuong khong duoc upload. Chi truong bo mon moi duoc upload tai lieu.";
-        }
-
         if (CurrentRole == "Teacher")
         {
             var subjects = authService.GetTeacherSubjects(CurrentUsername);
             if (subjects.Count == 0)
             {
-                return $"Ban la truong bo mon {CurrentManagedDepartment}, nhung chua duoc Admin gan mon hoc de upload.";
+                return "Ban chua duoc Admin gan mon hoc de upload.";
             }
 
-            return $"Ban chi duoc upload tai lieu cua bo mon {CurrentManagedDepartment} va mon: {string.Join(", ", subjects)}.";
+            return $"Ban chi duoc upload tai lieu cua mon: {string.Join(", ", subjects)}.";
         }
 
         return "Vai tro hien tai khong co quyen upload tai lieu.";
@@ -255,13 +256,13 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
     private async Task LoadPageDataAsync(CancellationToken cancellationToken)
     {
         LoadCurrentUser();
-        if (CurrentRole == "Teacher" && CurrentUserIsDepartmentHead && !HttpContext.Request.HasFormContentType)
+        if (CurrentRole == "Teacher" && !HttpContext.Request.HasFormContentType)
         {
-            Department = CurrentManagedDepartment;
             var firstSubject = authService.GetTeacherSubjects(CurrentUsername).FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(firstSubject))
             {
                 Subject = firstSubject;
+                Department = firstSubject;
             }
         }
 
@@ -304,16 +305,32 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
 
     private void LoadCurrentUser()
     {
-        CurrentUserName = User.Identity?.Name ?? "Unknown";
         CurrentUsername = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
-        CurrentRole = User.FindFirstValue(ClaimTypes.Role) ?? "Student";
-        CurrentUserIsDepartmentHead = string.Equals(User.FindFirstValue("IsDepartmentHead"), "true", StringComparison.OrdinalIgnoreCase);
-        CurrentManagedDepartment = User.FindFirstValue("ManagedDepartment") ?? string.Empty;
+        var currentUser = authService.GetUser(CurrentUsername);
+
+        CurrentUserName = currentUser?.DisplayName ?? User.Identity?.Name ?? "Unknown";
+        CurrentRole = currentUser?.Role ?? User.FindFirstValue(ClaimTypes.Role) ?? "Student";
+        CurrentUserIsDepartmentHead = currentUser?.IsDepartmentHead
+            ?? string.Equals(User.FindFirstValue("IsDepartmentHead"), "true", StringComparison.OrdinalIgnoreCase);
+        CurrentManagedDepartment = currentUser?.ManagedDepartment ?? User.FindFirstValue("ManagedDepartment") ?? string.Empty;
     }
 
     public IReadOnlyList<string> GetAssignedSubjects(string username)
     {
         return authService.GetTeacherSubjects(username);
+    }
+
+    private async Task NotifyAccountChangedAsync(string username, CancellationToken cancellationToken)
+    {
+        var user = authService.GetUser(username);
+        await hubContext.Clients.Group(ChatHub.UserGroup(username)).SendAsync("AccountUpdated", new
+        {
+            Username = username,
+            Role = user?.Role,
+            Department = user?.ManagedDepartment,
+            IsDepartmentHead = user?.IsDepartmentHead,
+            Subjects = authService.GetTeacherSubjects(username)
+        }, cancellationToken);
     }
 }
 

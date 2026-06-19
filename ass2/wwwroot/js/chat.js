@@ -10,6 +10,10 @@
     const visibleDocumentCount = document.getElementById("visibleDocumentCount");
     const totalDocumentCount = document.getElementById("totalDocumentCount");
     const sessionId = window.ass2Chat?.sessionId ?? crypto.randomUUID();
+    const activeTabOverride = sessionStorage.getItem("ass2ActiveTab");
+    if (activeTabOverride) {
+        sessionStorage.removeItem("ass2ActiveTab");
+    }
     const initialHistory = Array.isArray(window.ass2Chat?.initialHistory)
         ? window.ass2Chat.initialHistory
         : [];
@@ -44,6 +48,16 @@
         addFilterOption(chapterFilter, uploadedDocument.chapter);
         documentList.prepend(createDocumentItem(uploadedDocument));
         applyDocumentFilters();
+    });
+
+    connection.on("AccountUpdated", () => {
+        reloadKeepingCurrentTab();
+    });
+
+    connection.on("SubjectsChanged", () => {
+        if (document.getElementById("subjectsTab") || document.getElementById("adminTab")) {
+            reloadKeepingCurrentTab();
+        }
     });
 
     connection.onreconnecting(() => {
@@ -182,8 +196,8 @@
             });
         });
 
-        if (window.ass2Chat?.activeTab) {
-            activateTab(window.ass2Chat.activeTab);
+        if (activeTabOverride || window.ass2Chat?.activeTab) {
+            activateTab(activeTabOverride || window.ass2Chat.activeTab);
         }
 
         function activateTab(targetId) {
@@ -200,6 +214,15 @@
                 panel.hidden = !isActive;
             });
         }
+    }
+
+    function reloadKeepingCurrentTab() {
+        const activePanel = document.querySelector(".tab-panel.active");
+        if (activePanel?.id) {
+            sessionStorage.setItem("ass2ActiveTab", activePanel.id);
+        }
+
+        window.location.reload();
     }
 
     function setupDocumentFilters() {

@@ -58,6 +58,15 @@ public sealed class DemoAuthService
         }
     }
 
+    public DemoUser? GetUser(string username)
+    {
+        lock (_lock)
+        {
+            return _users.FirstOrDefault(user =>
+                string.Equals(user.Username, username.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     public RegisterResult RegisterStudent(string username, string password, string displayName)
     {
         username = username.Trim();
@@ -99,17 +108,11 @@ public sealed class DemoAuthService
                 return false;
             }
 
-            if (role != "Teacher")
-            {
-                isDepartmentHead = false;
-                managedDepartment = "";
-            }
-
             _users[index] = _users[index] with
             {
                 Role = role,
-                IsDepartmentHead = isDepartmentHead,
-                ManagedDepartment = managedDepartment
+                IsDepartmentHead = false,
+                ManagedDepartment = ""
             };
 
             if (role != "Teacher")
