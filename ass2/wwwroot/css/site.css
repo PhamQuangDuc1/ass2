@@ -68,12 +68,13 @@ body {
 
 .login-shell {
   display: grid;
-  grid-template-columns: minmax(300px, 440px) 1fr;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.25fr) minmax(280px, 0.9fr);
   gap: 18px;
   align-items: start;
 }
 
 .login-panel {
+  min-width: 0;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -263,6 +264,31 @@ h3 {
   color: var(--muted);
 }
 
+.role-update-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) auto minmax(180px, 260px) auto;
+  gap: 10px;
+  align-items: end;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-tools {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.admin-tools .role-update-form {
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 1fr) auto;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .teacher-permission {
   display: grid;
   gap: 10px;
@@ -335,6 +361,7 @@ textarea:focus {
 }
 
 .primary-action,
+.secondary-action,
 .chat-input button {
   border: 0;
   border-radius: 6px;
@@ -345,8 +372,20 @@ textarea:focus {
 }
 
 .primary-action:hover,
+.secondary-action:hover,
 .chat-input button:hover {
   background: var(--accent-strong);
+}
+
+.secondary-action {
+  align-self: end;
+  border: 1px solid var(--line);
+  color: var(--accent-strong);
+  background: #fff;
+}
+
+.secondary-action:hover {
+  color: #fff;
 }
 
 .chat-panel {
@@ -399,6 +438,35 @@ textarea:focus {
   font-size: 0.9rem;
 }
 
+.source-block {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.source-block > span {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.source-list li {
+  margin-top: 6px;
+}
+
+.source-list strong,
+.source-list small {
+  display: block;
+}
+
+.source-list small {
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
 .chat-input {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -428,9 +496,45 @@ textarea:focus {
   max-height: 56vh;
 }
 
+.document-management {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.document-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(180px, 260px) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.subject-chapter-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subject-chapter-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid #cfe5df;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: #f0f8f6;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .document-item {
   display: grid;
-  gap: 3px;
+  gap: 8px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -445,6 +549,69 @@ textarea:focus {
 .document-item span,
 .document-item small {
   color: var(--muted);
+}
+
+.document-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.document-meta span {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.department-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: #ddefea;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.document-viewer {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.document-viewer summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+.document-viewer pre {
+  max-height: 280px;
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  background: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
 
 .benchmark-table {
@@ -496,7 +663,9 @@ textarea:focus {
   }
 
   .form-grid,
-  .chat-input {
+  .chat-input,
+  .document-filters,
+  .role-update-form {
     grid-template-columns: 1fr;
   }
 
@@ -510,5 +679,13 @@ textarea:focus {
 
   .user-card {
     width: 100%;
+  }
+
+  .document-header {
+    flex-direction: column;
+  }
+
+  .department-badge {
+    white-space: normal;
   }
 }

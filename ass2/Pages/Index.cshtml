@@ -39,6 +39,11 @@
         {
             <button type="button" class="tab-button" data-tab-target="uploadTab">Upload</button>
         }
+        @if (Model.CurrentRole == "Admin")
+        {
+            <button type="button" class="tab-button" data-tab-target="adminTab">Admin</button>
+            <button type="button" class="tab-button" data-tab-target="subjectsTab">Mon hoc</button>
+        }
         <button type="button" class="tab-button" data-tab-target="benchmarkTab">Benchmark</button>
     </nav>
 
@@ -73,16 +78,62 @@
                 <p class="eyebrow">Quan ly tai lieu</p>
                 <h2>Danh sach tai lieu da index</h2>
             </div>
-            <span class="session-chip">@Model.Documents.Count tai lieu</span>
+            <span class="session-chip"><span id="visibleDocumentCount">@Model.Documents.Count</span>/<span id="totalDocumentCount">@Model.Documents.Count</span> tai lieu</span>
+        </div>
+
+        <div class="document-management">
+            <div class="document-filters" aria-label="Loc tai lieu">
+                <div class="form-row">
+                    <label for="subjectFilter">Mon hoc</label>
+                    <select id="subjectFilter">
+                        <option value="">Tat ca mon hoc</option>
+                        @foreach (var subject in Model.SubjectOptions)
+                        {
+                            <option value="@subject">@subject</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label for="chapterFilter">Chuong</label>
+                    <select id="chapterFilter">
+                        <option value="">Tat ca chuong</option>
+                        @foreach (var chapter in Model.ChapterOptions)
+                        {
+                            <option value="@chapter">@chapter</option>
+                        }
+                    </select>
+                </div>
+                <button type="button" class="secondary-action" id="clearDocumentFilters">Xoa loc</button>
+            </div>
+
+            <div class="subject-chapter-summary" aria-label="Thong ke theo mon hoc va chuong">
+                @foreach (var summary in Model.SubjectChapterSummaries)
+                {
+                    <span data-summary-subject="@summary.Subject" data-summary-chapter="@summary.Chapter">
+                        @summary.Subject / @summary.Chapter: @summary.DocumentCount
+                    </span>
+                }
+            </div>
         </div>
 
         <div class="document-list document-list-wide" id="documentList">
             @foreach (var document in Model.Documents)
             {
-                <article class="document-item">
-                    <strong>@document.Title</strong>
-                    <span>@document.Department - @document.Subject - @document.Chapter</span>
-                    <small>@document.FileName | GV: @document.Teacher | Upload: @document.UploadedBy | @document.UploadedAt.ToString("dd/MM HH:mm")</small>
+                <article class="document-item" data-subject="@document.Subject" data-chapter="@document.Chapter">
+                    <div class="document-header">
+                        <strong>@document.Title</strong>
+                        <span class="department-badge">Bo mon: @document.Department</span>
+                    </div>
+                    <div class="document-meta">
+                        <span>Mon: @document.Subject</span>
+                        <span>Chuong: @document.Chapter</span>
+                        <span>GV: @document.Teacher</span>
+                    </div>
+                    <small>@document.FileName | Upload: @document.UploadedBy | @document.UploadedAt.ToString("dd/MM HH:mm")</small>
+                    <details class="document-viewer">
+                        <summary>Xem tai lieu</summary>
+                        <pre>@document.Content</pre>
+                    </details>
                 </article>
             }
         </div>
@@ -103,11 +154,11 @@
                 <span>
                     @if (Model.CurrentRole == "Admin")
                     {
-                        <text>Admin duoc upload tai lieu cho moi bo mon.</text>
+                        <text>Admin duoc upload tai lieu cho moi bo mon va moi mon hoc.</text>
                     }
                     else
                     {
-                        <text>Ban la truong bo mon @Model.CurrentManagedDepartment, chi upload duoc tai lieu cua bo mon @Model.CurrentManagedDepartment.</text>
+                        <text>Ban la truong bo mon @Model.CurrentManagedDepartment, chi upload duoc mon da duoc Admin gan: @string.Join(", ", Model.UploadSubjectOptions).</text>
                     }
                 </span>
             </div>
@@ -120,7 +171,12 @@
                     </div>
                     <div class="form-row">
                         <label asp-for="Subject">Mon hoc</label>
-                        <input asp-for="Subject" />
+                        <select asp-for="Subject" disabled="@(Model.UploadSubjectOptions.Count == 0 ? "disabled" : null)">
+                            @foreach (var subject in Model.UploadSubjectOptions)
+                            {
+                                <option value="@subject">@subject</option>
+                            }
+                        </select>
                     </div>
                 </div>
 
@@ -142,7 +198,7 @@
 
                 <div class="form-row">
                     <label asp-for="UploadFile">PDF, DOCX, PPTX, TXT</label>
-                    <input asp-for="UploadFile" type="file" accept=".pdf,.docx,.pptx,.ppt,.txt,.md,.csv" />
+                    <input asp-for="UploadFile" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.csv" />
                 </div>
 
                 <div class="form-row">
@@ -152,6 +208,93 @@
 
                 <button type="submit" class="primary-action">Upload & index</button>
             </form>
+        </section>
+    }
+
+    @if (Model.CurrentRole == "Admin")
+    {
+        <section class="tab-panel" id="adminTab" hidden>
+            <div class="tab-heading">
+                <div>
+                    <p class="eyebrow">Admin</p>
+                    <h2>Set role tai khoan</h2>
+                </div>
+                <span class="session-chip">@Model.Users.Count tai khoan</span>
+            </div>
+
+            <div class="document-list document-list-wide">
+                @foreach (var user in Model.Users)
+                {
+                    <article class="document-item">
+                        <div class="document-header">
+                            <strong>@user.Username</strong>
+                            <span class="department-badge">@user.Role</span>
+                        </div>
+                        <div class="document-meta">
+                            <span>@user.DisplayName</span>
+                            <span>@(user.IsDepartmentHead ? $"Truong bo mon {user.ManagedDepartment}" : "Khong la truong bo mon")</span>
+                            <span>Mon duoc gan: @(Model.GetAssignedSubjects(user.Username).Count > 0 ? string.Join(", ", Model.GetAssignedSubjects(user.Username)) : "Chua co")</span>
+                        </div>
+                        <form method="post" asp-page-handler="UpdateRole" class="role-update-form">
+                            <input type="hidden" name="RoleUsername" value="@user.Username" />
+                            <div class="form-row">
+                                <label for="role-@user.Username">Role</label>
+                                <select id="role-@user.Username" name="Role">
+                                    <option value="Student" selected="@(user.Role == "Student")">Student</option>
+                                    <option value="Teacher" selected="@(user.Role == "Teacher")">Teacher</option>
+                                    <option value="Admin" selected="@(user.Role == "Admin")">Admin</option>
+                                </select>
+                            </div>
+                            <label class="check-row">
+                                <input type="checkbox" name="IsDepartmentHead" value="true" checked="@user.IsDepartmentHead" />
+                                Truong bo mon
+                            </label>
+                            <div class="form-row">
+                                <label for="department-@user.Username">Bo mon quan ly</label>
+                                <input id="department-@user.Username" name="ManagedDepartment" value="@user.ManagedDepartment" placeholder="VD: PRN222" />
+                            </div>
+                            <div class="form-row">
+                                <label for="subject-@user.Username">Mon hoc quan ly</label>
+                                <select id="subject-@user.Username" name="AssignSubject">
+                                    <option value="">Chua gan mon</option>
+                                    @foreach (var subject in Model.SubjectOptions)
+                                    {
+                                        <option value="@subject" selected="@(Model.GetAssignedSubjects(user.Username).Contains(subject, StringComparer.OrdinalIgnoreCase))">@subject</option>
+                                    }
+                                </select>
+                            </div>
+                            <button type="submit" class="secondary-action">Cap nhat</button>
+                        </form>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="tab-panel" id="subjectsTab" hidden>
+            <div class="tab-heading">
+                <div>
+                    <p class="eyebrow">Mon hoc</p>
+                    <h2>Quan ly mon hoc va giao vien</h2>
+                </div>
+                <span class="session-chip">@Model.SubjectOptions.Count mon hoc</span>
+            </div>
+
+            <div class="admin-tools">
+                <form method="post" asp-page-handler="CreateSubject" class="role-update-form">
+                    <div class="form-row">
+                        <label asp-for="NewSubject">Mon hoc moi</label>
+                        <input asp-for="NewSubject" placeholder="VD: Entity Framework" />
+                    </div>
+                    <button type="submit" class="secondary-action">Tao mon</button>
+                </form>
+            </div>
+
+            <div class="subject-chapter-summary">
+                @foreach (var subject in Model.SubjectOptions)
+                {
+                    <span>@subject</span>
+                }
+            </div>
         </section>
     }
 
@@ -204,7 +347,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
     <script>
         window.ass2Chat = {
-            sessionId: '@Model.SessionId'
+            sessionId: '@Model.SessionId',
+            activeTab: '@Model.ActiveTab',
+            initialHistory: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.InitialHistory, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))
         };
     </script>
     <script src="~/js/chat.js" asp-append-version="true"></script>

@@ -11,6 +11,7 @@ public sealed class GeminiAiService(HttpClient httpClient, IConfiguration config
     public async Task<string?> GenerateAnswerAsync(
         string question,
         IReadOnlyList<SourceMatch> sources,
+        IReadOnlyList<ChatTurn> history,
         CancellationToken cancellationToken)
     {
         var apiKey = configuration["Gemini:ApiKey"];
@@ -25,7 +26,7 @@ public sealed class GeminiAiService(HttpClient httpClient, IConfiguration config
             model = "gemini-flash-latest";
         }
 
-        var prompt = BuildPrompt(question, sources);
+        var prompt = BuildPrompt(question, sources, history);
         var request = new GeminiRequest(
         [
             new GeminiContent(
@@ -54,12 +55,30 @@ public sealed class GeminiAiService(HttpClient httpClient, IConfiguration config
             .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
     }
 
-    private static string BuildPrompt(string question, IReadOnlyList<SourceMatch> sources)
+    private static string BuildPrompt(string question, IReadOnlyList<SourceMatch> sources, IReadOnlyList<ChatTurn> history)
     {
         var builder = new StringBuilder();
         builder.AppendLine("Ban la chatbot hoi dap tai lieu cho sinh vien.");
-        builder.AppendLine("Chi tra loi dua tren ngu canh tai lieu ben duoi. Neu khong du ngu canh, hay noi ro la chua co tai lieu phu hop.");
+        builder.AppendLine("Tra loi tu nhien theo ngu canh hoi thoai gan day va ngu canh tai lieu ben duoi.");
+        builder.AppendLine("Neu cau hoi la cau noi tiep nhu 'cai do', 'phan nay', 'noi ro hon', hay suy ra doi tuong tu lich su hoi thoai.");
+        builder.AppendLine("Khong bia them ngoai tai lieu; neu khong du ngu canh, hay noi ro la chua co tai lieu phu hop.");
         builder.AppendLine("Tra loi bang tieng Viet, ngan gon, co nhac nguon tai lieu.");
+        builder.AppendLine();
+
+        builder.AppendLine("Lich su hoi thoai gan day:");
+        if (history.Count == 0)
+        {
+            builder.AppendLine("- Chua co hoi thoai truoc do.");
+        }
+        else
+        {
+            foreach (var turn in history.TakeLast(6))
+            {
+                builder.AppendLine($"- Sinh vien: {turn.Question}");
+                builder.AppendLine($"  Bot: {Limit(turn.Answer, 700)}");
+            }
+        }
+
         builder.AppendLine();
         builder.AppendLine("Ngu canh tai lieu:");
 
@@ -79,6 +98,11 @@ public sealed class GeminiAiService(HttpClient httpClient, IConfiguration config
         builder.AppendLine();
         builder.AppendLine($"Cau hoi: {question}");
         return builder.ToString();
+    }
+
+    private static string Limit(string value, int maxLength)
+    {
+        return value.Length <= maxLength ? value : value[..maxLength] + "...";
     }
 
     private sealed record GeminiRequest(IReadOnlyList<GeminiContent> Contents);

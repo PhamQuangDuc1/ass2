@@ -5,6 +5,7 @@ namespace ass2.Data;
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     public DbSet<DocumentEntity> Documents => Set<DocumentEntity>();
+    public DbSet<DocumentChunkEntity> DocumentChunks => Set<DocumentChunkEntity>();
     public DbSet<ChatTurnEntity> ChatTurns => Set<ChatTurnEntity>();
     public DbSet<SourceMatchEntity> SourceMatches => Set<SourceMatchEntity>();
 
@@ -21,6 +22,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(document => document.Chapter).HasMaxLength(120);
             entity.Property(document => document.Teacher).HasMaxLength(120);
             entity.Property(document => document.UploadedBy).HasMaxLength(120);
+            entity.HasMany(document => document.Chunks)
+                .WithOne(chunk => chunk.Document)
+                .HasForeignKey(chunk => chunk.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DocumentChunkEntity>(entity =>
+        {
+            entity.ToTable("DocumentChunks");
+            entity.HasKey(chunk => chunk.Id);
+            entity.Property(chunk => chunk.Title).HasMaxLength(200);
+            entity.Property(chunk => chunk.Department).HasMaxLength(100);
+            entity.Property(chunk => chunk.Subject).HasMaxLength(120);
+            entity.Property(chunk => chunk.Chapter).HasMaxLength(120);
+            entity.Property(chunk => chunk.Teacher).HasMaxLength(120);
+            entity.HasIndex(chunk => chunk.DocumentId);
         });
 
         modelBuilder.Entity<ChatTurnEntity>(entity =>
@@ -58,6 +75,23 @@ public sealed class DocumentEntity
     public string UploadedBy { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public DateTimeOffset UploadedAt { get; set; }
+    public List<DocumentChunkEntity> Chunks { get; set; } = [];
+}
+
+public sealed class DocumentChunkEntity
+{
+    public Guid Id { get; set; }
+    public Guid DocumentId { get; set; }
+    public DocumentEntity? Document { get; set; }
+    public int ChunkIndex { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Department { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
+    public string Chapter { get; set; } = string.Empty;
+    public string Teacher { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string Embedding { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public sealed class ChatTurnEntity

@@ -28,6 +28,35 @@
     </div>
 
     <div class="login-panel">
+        <p class="eyebrow">Tai khoan moi</p>
+        <h1>Dang ky hoc sinh</h1>
+        @if (!string.IsNullOrWhiteSpace(Model.RegisterErrorMessage))
+        {
+            <div class="notice notice-danger">@Model.RegisterErrorMessage</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.RegisterMessage))
+        {
+            <div class="notice notice-success">@Model.RegisterMessage</div>
+        }
+
+        <form method="post" asp-page-handler="Register" class="upload-form">
+            <div class="form-row">
+                <label asp-for="RegisterDisplayName">Ten hien thi</label>
+                <input asp-for="RegisterDisplayName" autocomplete="name" />
+            </div>
+            <div class="form-row">
+                <label asp-for="RegisterUsername">Username</label>
+                <input asp-for="RegisterUsername" autocomplete="username" />
+            </div>
+            <div class="form-row">
+                <label asp-for="RegisterPassword">Password</label>
+                <input asp-for="RegisterPassword" type="password" autocomplete="new-password" />
+            </div>
+            <button type="submit" class="primary-action">Dang ky</button>
+        </form>
+    </div>
+
+    <div class="login-panel">
         <div class="section-heading">
             <h2>Tai khoan demo</h2>
             <span>password: 123</span>
