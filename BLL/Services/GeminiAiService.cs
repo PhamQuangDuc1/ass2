@@ -1,8 +1,11 @@
 using System.Text;
 using System.Text.Json;
-using ass2.Models;
+using System.Net.Http.Json;
+using BLL.Models;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
-namespace ass2.Services;
+namespace BLL.Services;
 
 public sealed class GeminiAiService(HttpClient httpClient, IConfiguration configuration, ILogger<GeminiAiService> logger)
 {

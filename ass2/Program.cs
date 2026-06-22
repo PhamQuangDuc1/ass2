@@ -1,6 +1,6 @@
-using ass2.Data;
 using ass2.Hubs;
-using ass2.Services;
+using BLL.Services;
+using DAL.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +22,7 @@ builder.Services.AddHttpClient<GeminiAiService>(client =>
 });
 builder.Services.AddSingleton<KnowledgeBaseService>();
 builder.Services.AddSingleton<DemoAuthService>();
+builder.Services.AddSingleton<BenchmarkService>();
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

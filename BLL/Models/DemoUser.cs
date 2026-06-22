@@ -1,4 +1,4 @@
-namespace ass2.Models;
+namespace BLL.Models;
 
 public sealed record DemoUser(
     string Username,

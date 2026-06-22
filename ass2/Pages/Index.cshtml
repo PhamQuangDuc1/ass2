@@ -126,6 +126,10 @@
                         <span>GV: @document.Teacher</span>
                     </div>
                     <small>@document.FileName | Upload: @document.UploadedBy | @document.UploadedAt.ToString("dd/MM HH:mm")</small>
+                    @if (document.HasOriginalFile)
+                    {
+                        <a class="secondary-action" asp-page-handler="DownloadDocument" asp-route-id="@document.Id">Tai file goc</a>
+                    }
                     <details class="document-viewer">
                         <summary>Xem tai lieu</summary>
                         <pre>@document.Content</pre>
@@ -284,35 +288,52 @@
                 <p class="eyebrow">RAG benchmark</p>
                 <h2>So sanh model demo</h2>
             </div>
-            <span class="session-chip">Demo</span>
+            <span class="session-chip">Du lieu thuc nghiem</span>
         </div>
 
-        <table class="benchmark-table">
-            <thead>
-                <tr>
-                    <th>Model</th>
-                    <th>Precision</th>
-                    <th>Recall</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>multilingual-e5-base</td>
-                    <td>0.82</td>
-                    <td>0.78</td>
-                </tr>
-                <tr>
-                    <td>text-embedding-3-small</td>
-                    <td>0.79</td>
-                    <td>0.81</td>
-                </tr>
-                <tr>
-                    <td>bge-m3</td>
-                    <td>0.85</td>
-                    <td>0.83</td>
-                </tr>
-            </tbody>
-        </table>
+        <form method="post" asp-page-handler="RunBenchmark">
+            <button type="submit" class="primary-action">Chay benchmark</button>
+        </form>
+
+        @if (Model.BenchmarkResults is null)
+        {
+            <p>Chay benchmark de do tren tai lieu hien co. Provider chua co API key se duoc danh dau, khong dung so lieu gia.</p>
+        }
+        else
+        {
+            <h3>Chunking strategy</h3>
+            <table class="benchmark-table">
+                <thead><tr><th>Strategy</th><th>P@@3</th><th>R@@3</th><th>MRR</th><th>Latency</th></tr></thead>
+                <tbody>
+                @foreach (var result in Model.BenchmarkResults.ChunkingResults)
+                {
+                    <tr><td>@result.Name</td><td>@result.PrecisionAt3.ToString("0.000")</td><td>@result.RecallAt3.ToString("0.000")</td><td>@result.MeanReciprocalRank.ToString("0.000")</td><td>@result.AverageLatencyMs.ToString("0.0") ms</td></tr>
+                }
+                </tbody>
+            </table>
+
+            <h3>Embedding model</h3>
+            <table class="benchmark-table">
+                <thead><tr><th>Model</th><th>Status</th><th>P@@3</th><th>R@@3</th><th>MRR</th><th>Latency</th><th>Ghi chu</th></tr></thead>
+                <tbody>
+                @foreach (var result in Model.BenchmarkResults.EmbeddingResults)
+                {
+                    <tr><td>@result.Name</td><td>@result.Status</td><td>@result.PrecisionAt3.ToString("0.000")</td><td>@result.RecallAt3.ToString("0.000")</td><td>@result.MeanReciprocalRank.ToString("0.000")</td><td>@result.AverageLatencyMs.ToString("0.0") ms</td><td>@result.Note</td></tr>
+                }
+                </tbody>
+            </table>
+
+            <h3>RAG vs fine-tuned model</h3>
+            <table class="benchmark-table">
+                <thead><tr><th>Approach</th><th>Status</th><th>Document coverage</th><th>Latency</th><th>Ghi chu</th></tr></thead>
+                <tbody>
+                @foreach (var result in Model.BenchmarkResults.GenerationResults)
+                {
+                    <tr><td>@result.Approach</td><td>@result.Status</td><td>@result.DocumentCoverage.ToString("0.000")</td><td>@result.AverageLatencyMs.ToString("0.0") ms</td><td>@result.Note</td></tr>
+                }
+                </tbody>
+            </table>
+        }
 
         <div class="subject-summary">
             @foreach (var subject in Model.SubjectCounts)

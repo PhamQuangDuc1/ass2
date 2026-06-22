@@ -107,7 +107,11 @@
                 const snippet = source.snippet
                     ? `<small>${escapeHtml(source.snippet)}</small>`
                     : "";
-                return `<li><strong>${meta}</strong>${snippet}</li>`;
+                const sourceUrl = `/Index?handler=DownloadDocument&id=${encodeURIComponent(source.documentId ?? "")}`;
+                const originalLink = source.hasOriginalFile
+                    ? `<a href="${sourceUrl}">Tai ${escapeHtml(source.fileName || "nguon goc")}</a>`
+                    : "";
+                return `<li><strong>${meta}</strong>${snippet}${originalLink}</li>`;
             })
             .join("");
 
@@ -171,6 +175,11 @@
         const detailsLine = document.createElement("small");
         detailsLine.textContent = `${uploadedDocument.fileName ?? ""} | Upload: ${uploadedDocument.uploadedBy ?? ""} | ${uploadedDocument.uploadedAt ?? ""}`;
 
+        const originalLink = document.createElement("a");
+        originalLink.href = `/Index?handler=DownloadDocument&id=${encodeURIComponent(uploadedDocument.id ?? "")}`;
+        originalLink.textContent = "Tai file goc";
+        originalLink.hidden = !uploadedDocument.hasOriginalFile;
+
         const viewer = document.createElement("details");
         viewer.className = "document-viewer";
 
@@ -181,7 +190,7 @@
         content.textContent = uploadedDocument.content ?? "";
 
         viewer.append(summary, content);
-        item.append(header, meta, detailsLine, viewer);
+        item.append(header, meta, detailsLine, originalLink, viewer);
 
         return item;
     }

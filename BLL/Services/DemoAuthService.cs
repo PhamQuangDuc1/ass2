@@ -1,6 +1,6 @@
-using ass2.Models;
+using BLL.Models;
 
-namespace ass2.Services;
+namespace BLL.Services;
 
 public sealed class DemoAuthService
 {

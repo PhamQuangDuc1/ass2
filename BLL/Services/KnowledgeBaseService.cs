@@ -2,15 +2,16 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Globalization;
-using ass2.Data;
-using ass2.Models;
+using BLL.Models;
+using DAL.Data;
 using DocumentFormat.OpenXml.Packaging;
 using Microsoft.EntityFrameworkCore;
 using UglyToad.PdfPig;
 using DrawingText = DocumentFormat.OpenXml.Drawing.Text;
 using WordText = DocumentFormat.OpenXml.Wordprocessing.Text;
+using Microsoft.AspNetCore.Http;
 
-namespace ass2.Services;
+namespace BLL.Services;
 
 public sealed class KnowledgeBaseService(
     IDbContextFactory<AppDbContext> dbContextFactory,
@@ -58,6 +59,7 @@ public sealed class KnowledgeBaseService(
         CancellationToken cancellationToken)
     {
         var fileName = file?.FileName ?? "manual-note.txt";
+        var originalFile = await ReadOriginalFileAsync(file, cancellationToken);
         var content = string.IsNullOrWhiteSpace(manualContent)
             ? await ExtractReadableContentAsync(file, cancellationToken)
             : manualContent;
@@ -77,17 +79,34 @@ public sealed class KnowledgeBaseService(
             teacher.Trim(),
             uploadedBy.Trim(),
             content.Trim(),
-            DateTimeOffset.Now);
+            DateTimeOffset.Now,
+            originalFile.Length > 0);
 
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureSchemaAsync(db, cancellationToken);
 
         var documentEntity = ToEntity(document);
+        documentEntity.ContentType = file?.ContentType ?? string.Empty;
+        documentEntity.FileContent = originalFile.Length > 0 ? originalFile : null;
         documentEntity.Chunks = BuildChunkEntities(document).ToList();
         db.Documents.Add(documentEntity);
         await db.SaveChangesAsync(cancellationToken);
 
         return document;
+    }
+
+    public async Task<OriginalDocumentFile?> GetOriginalFileAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var document = await db.Documents
+            .AsNoTracking()
+            .Where(item => item.Id == documentId)
+            .Select(item => new { item.FileContent, item.ContentType, item.FileName })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return document?.FileContent is { Length: > 0 }
+            ? new OriginalDocumentFile(document.FileContent, document.ContentType, document.FileName)
+            : null;
     }
 
     public async Task<ChatTurn> AskAsync(string sessionId, string question, CancellationToken cancellationToken = default)
@@ -167,7 +186,8 @@ public sealed class KnowledgeBaseService(
             teacher,
             uploadedBy,
             content,
-            DateTimeOffset.Now.AddMinutes(-index));
+            DateTimeOffset.Now.AddMinutes(-index),
+            false);
     }
 
     private async Task<IReadOnlyList<SourceMatch>> SearchAsync(string retrievalQuery, string question, int take, CancellationToken cancellationToken)
@@ -189,6 +209,7 @@ public sealed class KnowledgeBaseService(
 
         var chunks = await db.DocumentChunks
             .AsNoTracking()
+            .Include(chunk => chunk.Document)
             .ToListAsync(cancellationToken);
 
         return chunks
@@ -206,7 +227,9 @@ public sealed class KnowledgeBaseService(
                     chunk.Chapter,
                     chunk.Teacher,
                     MakeSnippet(chunk.Content, question),
-                    score);
+                    score,
+                    chunk.Document?.FileName ?? string.Empty,
+                    chunk.Document?.FileContent is { Length: > 0 });
             })
             .Where(match => importantTokens.Count == 0 || importantTokens.Any(token => Tokenize(match.Snippet).Contains(token)))
             .Where(match => match.Score >= 250)
@@ -331,6 +354,19 @@ public sealed class KnowledgeBaseService(
             ".ppt" => $"Da nhan file {file.FileName}. File PPT doi cu chua duoc doc truc tiep, vui long luu thanh PPTX hoac nhap tom tat noi dung.",
             _ => $"Da nhan file {file.FileName}. Dinh dang nay chua duoc ho tro doc noi dung truc tiep."
         };
+    }
+
+    private static async Task<byte[]> ReadOriginalFileAsync(IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return [];
+        }
+
+        await using var stream = file.OpenReadStream();
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        return memory.ToArray();
     }
 
     private static async Task<string> ExtractPlainTextAsync(IFormFile file, CancellationToken cancellationToken)
@@ -523,6 +559,12 @@ public sealed class KnowledgeBaseService(
     {
         await db.Database.ExecuteSqlRawAsync(
             """
+            IF COL_LENGTH(N'[dbo].[Documents]', N'ContentType') IS NULL
+                ALTER TABLE [dbo].[Documents] ADD [ContentType] nvarchar(120) NOT NULL CONSTRAINT [DF_Documents_ContentType] DEFAULT N'';
+
+            IF COL_LENGTH(N'[dbo].[Documents]', N'FileContent') IS NULL
+                ALTER TABLE [dbo].[Documents] ADD [FileContent] varbinary(max) NULL;
+
             IF OBJECT_ID(N'[dbo].[DocumentChunks]', N'U') IS NULL
             BEGIN
                 CREATE TABLE [dbo].[DocumentChunks] (
@@ -574,6 +616,12 @@ public sealed class KnowledgeBaseService(
 
                 CREATE INDEX [IX_SourceMatches_ChatTurnId] ON [dbo].[SourceMatches] ([ChatTurnId]);
             END
+
+            IF COL_LENGTH(N'[dbo].[SourceMatches]', N'FileName') IS NULL
+                ALTER TABLE [dbo].[SourceMatches] ADD [FileName] nvarchar(260) NOT NULL CONSTRAINT [DF_SourceMatches_FileName] DEFAULT N'';
+
+            IF COL_LENGTH(N'[dbo].[SourceMatches]', N'HasOriginalFile') IS NULL
+                ALTER TABLE [dbo].[SourceMatches] ADD [HasOriginalFile] bit NOT NULL CONSTRAINT [DF_SourceMatches_HasOriginalFile] DEFAULT 0;
             """,
             cancellationToken);
     }
@@ -731,7 +779,8 @@ public sealed class KnowledgeBaseService(
             document.Teacher,
             document.UploadedBy,
             document.Content,
-            document.UploadedAt);
+            document.UploadedAt,
+            document.FileContent is { Length: > 0 });
     }
 
     private static ChatTurn ToModel(ChatTurnEntity turn)
@@ -749,7 +798,9 @@ public sealed class KnowledgeBaseService(
                     source.Chapter,
                     source.Teacher,
                     source.Snippet,
-                    source.Score))
+                    source.Score,
+                    source.FileName,
+                    source.HasOriginalFile))
                 .ToList(),
             turn.CreatedAt);
     }
@@ -791,7 +842,9 @@ public sealed class KnowledgeBaseService(
                 Chapter = source.Chapter,
                 Teacher = source.Teacher,
                 Snippet = source.Snippet,
-                Score = source.Score
+                Score = source.Score,
+                FileName = source.FileName,
+                HasOriginalFile = source.HasOriginalFile
             }).ToList()
         };
     }

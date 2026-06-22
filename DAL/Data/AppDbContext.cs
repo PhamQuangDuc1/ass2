@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace ass2.Data;
+namespace DAL.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
@@ -22,6 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(document => document.Chapter).HasMaxLength(120);
             entity.Property(document => document.Teacher).HasMaxLength(120);
             entity.Property(document => document.UploadedBy).HasMaxLength(120);
+            entity.Property(document => document.ContentType).HasMaxLength(120);
             entity.HasMany(document => document.Chunks)
                 .WithOne(chunk => chunk.Document)
                 .HasForeignKey(chunk => chunk.DocumentId)
@@ -59,6 +60,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(source => source.Subject).HasMaxLength(120);
             entity.Property(source => source.Chapter).HasMaxLength(120);
             entity.Property(source => source.Teacher).HasMaxLength(120);
+            entity.Property(source => source.FileName).HasMaxLength(260);
         });
     }
 }
@@ -74,6 +76,8 @@ public sealed class DocumentEntity
     public string Teacher { get; set; } = string.Empty;
     public string UploadedBy { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public byte[]? FileContent { get; set; }
     public DateTimeOffset UploadedAt { get; set; }
     public List<DocumentChunkEntity> Chunks { get; set; } = [];
 }
@@ -116,4 +120,6 @@ public sealed class SourceMatchEntity
     public string Teacher { get; set; } = string.Empty;
     public string Snippet { get; set; } = string.Empty;
     public int Score { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public bool HasOriginalFile { get; set; }
 }

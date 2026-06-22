@@ -1,6 +1,6 @@
 using ass2.Hubs;
-using ass2.Models;
-using ass2.Services;
+using BLL.Models;
+using BLL.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -10,7 +10,11 @@ using System.Security.Claims;
 namespace ass2.Pages;
 
 [Authorize]
-public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub> hubContext, DemoAuthService authService) : PageModel
+public class IndexModel(
+    KnowledgeBaseService knowledgeBase,
+    BenchmarkService benchmarkService,
+    IHubContext<ChatHub> hubContext,
+    DemoAuthService authService) : PageModel
 {
     public IReadOnlyList<KnowledgeDocument> Documents { get; private set; } = [];
     public IReadOnlyList<ChatTurn> InitialHistory { get; private set; } = [];
@@ -20,6 +24,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
     public IReadOnlyList<string> ChapterOptions { get; private set; } = [];
     public IReadOnlyList<SubjectChapterSummary> SubjectChapterSummaries { get; private set; } = [];
     public IReadOnlyDictionary<string, int> SubjectCounts { get; private set; } = new Dictionary<string, int>();
+    public BenchmarkDashboard? BenchmarkResults { get; private set; }
     public string SessionId { get; private set; } = string.Empty;
     public string CurrentUserName { get; private set; } = string.Empty;
     public string CurrentUsername { get; private set; } = string.Empty;
@@ -78,6 +83,23 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
         await LoadPageDataAsync(cancellationToken);
     }
 
+    public async Task<IActionResult> OnGetDownloadDocumentAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var original = await knowledgeBase.GetOriginalFileAsync(id, cancellationToken);
+        return original is null
+            ? NotFound()
+            : File(original.Content, string.IsNullOrWhiteSpace(original.ContentType) ? "application/octet-stream" : original.ContentType, original.FileName);
+    }
+
+    public async Task<IActionResult> OnPostRunBenchmarkAsync(CancellationToken cancellationToken)
+    {
+        BenchmarkResults = await benchmarkService.RunAsync(cancellationToken);
+        ActiveTab = "benchmarkTab";
+        StatusMessage = "Da chay benchmark tren tap tai lieu hien tai.";
+        await LoadPageDataAsync(cancellationToken);
+        return Page();
+    }
+
     public async Task<IActionResult> OnPostUploadAsync(CancellationToken cancellationToken)
     {
         if (!CanUploadDocument())
@@ -109,6 +131,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
         StatusMessage = $"Da upload va index tai lieu: {document.Title}.";
         await hubContext.Clients.All.SendAsync("DocumentUploaded", new
         {
+            document.Id,
             document.Title,
             document.Department,
             document.Subject,
@@ -117,6 +140,7 @@ public class IndexModel(KnowledgeBaseService knowledgeBase, IHubContext<ChatHub>
             document.FileName,
             document.UploadedBy,
             document.Content,
+            document.HasOriginalFile,
             UploadedAt = document.UploadedAt.ToString("HH:mm:ss")
         }, cancellationToken);
 

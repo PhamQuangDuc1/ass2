@@ -1,4 +1,4 @@
-namespace ass2.Models;
+namespace BLL.Models;
 
 public sealed record KnowledgeDocument(
     Guid Id,
@@ -10,7 +10,8 @@ public sealed record KnowledgeDocument(
     string Teacher,
     string UploadedBy,
     string Content,
-    DateTimeOffset UploadedAt);
+    DateTimeOffset UploadedAt,
+    bool HasOriginalFile);
 
 public sealed record SourceMatch(
     Guid DocumentId,
@@ -19,7 +20,9 @@ public sealed record SourceMatch(
     string Chapter,
     string Teacher,
     string Snippet,
-    int Score);
+    int Score,
+    string FileName,
+    bool HasOriginalFile);
 
 public sealed record ChatTurn(
     string SessionId,
