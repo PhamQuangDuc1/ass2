@@ -39,6 +39,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var knowledgeBase = scope.ServiceProvider.GetRequiredService<KnowledgeBaseService>();
+    var authService = scope.ServiceProvider.GetRequiredService<DemoAuthService>();
+    authService.EnsureReady();
     await knowledgeBase.SeedAsync();
 }
 

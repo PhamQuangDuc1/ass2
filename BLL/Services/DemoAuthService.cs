@@ -1,30 +1,21 @@
 using BLL.Models;
+using DAL.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace BLL.Services;
 
-public sealed class DemoAuthService
+public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFactory)
 {
     private readonly object _lock = new();
-    private readonly List<DemoUser> _users =
-    [
-        new("admin", "123", "Admin", "Admin", false, ""),
-        new("gv_prn", "123", "Nguyen Van A", "Teacher", true, "PRN222"),
-        new("gv_ai", "123", "Le Van C", "Teacher", true, "AI"),
-        new("gv_thuong", "123", "Tran Thi B", "Teacher", false, "PRN222"),
-        new("hocsinh", "123", "Sinh vien Demo", "Student", false, "")
-    ];
-    private readonly List<string> _subjects =
-    [
-        "Razor Pages",
-        "SignalR",
-        "RAG"
-    ];
-    private readonly Dictionary<string, List<string>> _teacherSubjects = new(StringComparer.OrdinalIgnoreCase)
+    private bool _schemaReady;
+
+    public void EnsureReady()
     {
-        ["gv_prn"] = ["Razor Pages"],
-        ["gv_ai"] = ["RAG"],
-        ["gv_thuong"] = ["SignalR"]
-    };
+        lock (_lock)
+        {
+            using var db = CreateReadyDbContext();
+        }
+    }
 
     public IReadOnlyList<DemoUser> Users
     {
@@ -32,7 +23,12 @@ public sealed class DemoAuthService
         {
             lock (_lock)
             {
-                return _users.ToList();
+                using var db = CreateReadyDbContext();
+                return db.Users
+                    .AsNoTracking()
+                    .OrderBy(user => user.Username)
+                    .Select(user => ToModel(user))
+                    .ToList();
             }
         }
     }
@@ -43,27 +39,43 @@ public sealed class DemoAuthService
         {
             lock (_lock)
             {
-                return _subjects.OrderBy(subject => subject).ToList();
+                using var db = CreateReadyDbContext();
+                return db.Subjects
+                    .AsNoTracking()
+                    .OrderBy(subject => subject.Name)
+                    .Select(subject => subject.Name)
+                    .ToList();
             }
         }
     }
 
     public DemoUser? Validate(string username, string password)
     {
+        username = username.Trim();
+        var normalizedUsername = Normalize(username);
+
         lock (_lock)
         {
-            return _users.FirstOrDefault(user =>
-                string.Equals(user.Username, username.Trim(), StringComparison.OrdinalIgnoreCase)
-                && user.Password == password);
+            using var db = CreateReadyDbContext();
+            var user = db.Users
+                .AsNoTracking()
+                .FirstOrDefault(item => item.Username.ToLower() == normalizedUsername && item.Password == password);
+            return user is null ? null : ToModel(user);
         }
     }
 
     public DemoUser? GetUser(string username)
     {
+        username = username.Trim();
+        var normalizedUsername = Normalize(username);
+
         lock (_lock)
         {
-            return _users.FirstOrDefault(user =>
-                string.Equals(user.Username, username.Trim(), StringComparison.OrdinalIgnoreCase));
+            using var db = CreateReadyDbContext();
+            var user = db.Users
+                .AsNoTracking()
+                .FirstOrDefault(item => item.Username.ToLower() == normalizedUsername);
+            return user is null ? null : ToModel(user);
         }
     }
 
@@ -71,6 +83,7 @@ public sealed class DemoAuthService
     {
         username = username.Trim();
         displayName = displayName.Trim();
+        var normalizedUsername = Normalize(username);
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(displayName))
         {
@@ -79,12 +92,23 @@ public sealed class DemoAuthService
 
         lock (_lock)
         {
-            if (_users.Any(user => string.Equals(user.Username, username, StringComparison.OrdinalIgnoreCase)))
+            using var db = CreateReadyDbContext();
+            if (db.Users.Any(user => user.Username.ToLower() == normalizedUsername))
             {
                 return RegisterResult.DuplicateUsername;
             }
 
-            _users.Add(new DemoUser(username, password, displayName, "Student", false, ""));
+            db.Users.Add(new UserEntity
+            {
+                Username = username,
+                Password = password,
+                DisplayName = displayName,
+                Role = "Student",
+                IsDepartmentHead = false,
+                ManagedDepartment = string.Empty,
+                CreatedAt = DateTimeOffset.Now
+            });
+            db.SaveChanges();
             return RegisterResult.Success;
         }
     }
@@ -94,6 +118,7 @@ public sealed class DemoAuthService
         username = username.Trim();
         role = role.Trim();
         managedDepartment = managedDepartment.Trim();
+        var normalizedUsername = Normalize(username);
 
         if (!IsAllowedRole(role))
         {
@@ -102,45 +127,52 @@ public sealed class DemoAuthService
 
         lock (_lock)
         {
-            var index = _users.FindIndex(user => string.Equals(user.Username, username, StringComparison.OrdinalIgnoreCase));
-            if (index < 0)
+            using var db = CreateReadyDbContext();
+            var user = db.Users.FirstOrDefault(item => item.Username.ToLower() == normalizedUsername);
+            if (user is null)
             {
                 return false;
             }
 
-            _users[index] = _users[index] with
-            {
-                Role = role,
-                IsDepartmentHead = false,
-                ManagedDepartment = ""
-            };
+            user.Role = role;
+            user.IsDepartmentHead = false;
+            user.ManagedDepartment = string.Empty;
 
             if (role != "Teacher")
             {
-                _teacherSubjects.Remove(username);
+                var assignments = db.TeacherSubjects.Where(item => item.Username.ToLower() == normalizedUsername).ToList();
+                db.TeacherSubjects.RemoveRange(assignments);
             }
 
+            db.SaveChanges();
             return true;
         }
     }
 
     public bool CreateSubject(string? subject)
     {
+        subject = subject?.Trim() ?? string.Empty;
+        var normalizedSubject = Normalize(subject);
+
         if (string.IsNullOrWhiteSpace(subject))
         {
             return false;
         }
 
-        subject = subject.Trim();
-
         lock (_lock)
         {
-            if (_subjects.Any(item => string.Equals(item, subject, StringComparison.OrdinalIgnoreCase)))
+            using var db = CreateReadyDbContext();
+            if (db.Subjects.Any(item => item.Name.ToLower() == normalizedSubject))
             {
                 return false;
             }
 
-            _subjects.Add(subject);
+            db.Subjects.Add(new SubjectEntity
+            {
+                Name = subject,
+                CreatedAt = DateTimeOffset.Now
+            });
+            db.SaveChanges();
             return true;
         }
     }
@@ -148,6 +180,8 @@ public sealed class DemoAuthService
     public string? GetSubjectOwner(string? subject)
     {
         subject = subject?.Trim() ?? string.Empty;
+        var normalizedSubject = Normalize(subject);
+
         if (string.IsNullOrWhiteSpace(subject))
         {
             return null;
@@ -155,9 +189,11 @@ public sealed class DemoAuthService
 
         lock (_lock)
         {
-            return _teacherSubjects
-                .Where(item => item.Value.Any(value => string.Equals(value, subject, StringComparison.OrdinalIgnoreCase)))
-                .Select(item => item.Key)
+            using var db = CreateReadyDbContext();
+            return db.TeacherSubjects
+                .AsNoTracking()
+                .Where(item => item.Subject.ToLower() == normalizedSubject)
+                .Select(item => item.Username)
                 .FirstOrDefault();
         }
     }
@@ -174,10 +210,15 @@ public sealed class DemoAuthService
     {
         lock (_lock)
         {
+            using var db = CreateReadyDbContext();
+            var assignedSubjects = db.TeacherSubjects
+                .AsNoTracking()
+                .Select(item => item.Subject)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             return subjects
                 .Where(subject => !string.IsNullOrWhiteSpace(subject))
-                .Where(subject => !_teacherSubjects.Values.Any(values =>
-                    values.Any(value => string.Equals(value, subject, StringComparison.OrdinalIgnoreCase))))
+                .Where(subject => !assignedSubjects.Contains(subject))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(subject => subject)
                 .ToList();
@@ -188,48 +229,202 @@ public sealed class DemoAuthService
     {
         username = username.Trim();
         subject = subject?.Trim() ?? string.Empty;
+        var normalizedUsername = Normalize(username);
+        var normalizedSubject = Normalize(subject);
 
         lock (_lock)
         {
-            var user = _users.FirstOrDefault(item => string.Equals(item.Username, username, StringComparison.OrdinalIgnoreCase));
+            using var db = CreateReadyDbContext();
+            var user = db.Users.FirstOrDefault(item => item.Username.ToLower() == normalizedUsername);
             if (user is null || user.Role != "Teacher")
             {
                 return false;
             }
 
+            var existingTeacherAssignments = db.TeacherSubjects
+                .Where(item => item.Username.ToLower() == normalizedUsername)
+                .ToList();
+
             if (string.IsNullOrWhiteSpace(subject))
             {
-                _teacherSubjects.Remove(username);
+                db.TeacherSubjects.RemoveRange(existingTeacherAssignments);
+                db.SaveChanges();
                 return true;
             }
 
-            var subjectOwner = _teacherSubjects
-                .Where(item => !string.Equals(item.Key, username, StringComparison.OrdinalIgnoreCase))
-                .FirstOrDefault(item => item.Value.Any(value => string.Equals(value, subject, StringComparison.OrdinalIgnoreCase)));
-
-            if (!string.IsNullOrWhiteSpace(subjectOwner.Key))
+            var subjectAssignment = db.TeacherSubjects.FirstOrDefault(item => item.Subject.ToLower() == normalizedSubject);
+            if (subjectAssignment is not null && !string.Equals(subjectAssignment.Username, username, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
 
-            if (!_subjects.Any(item => string.Equals(item, subject, StringComparison.OrdinalIgnoreCase)))
+            if (!db.Subjects.Any(item => item.Name.ToLower() == normalizedSubject))
             {
-                _subjects.Add(subject);
+                db.Subjects.Add(new SubjectEntity
+                {
+                    Name = subject,
+                    CreatedAt = DateTimeOffset.Now
+                });
             }
 
-            _teacherSubjects[username] = [subject];
+            foreach (var assignment in existingTeacherAssignments.Where(item => !string.Equals(item.Subject, subject, StringComparison.OrdinalIgnoreCase)))
+            {
+                db.TeacherSubjects.Remove(assignment);
+            }
+
+            if (subjectAssignment is null)
+            {
+                db.TeacherSubjects.Add(new TeacherSubjectEntity
+                {
+                    Username = username,
+                    Subject = subject,
+                    AssignedAt = DateTimeOffset.Now
+                });
+            }
+            else
+            {
+                subjectAssignment.Username = username;
+                subjectAssignment.AssignedAt = DateTimeOffset.Now;
+            }
+
+            db.SaveChanges();
             return true;
         }
     }
 
     public IReadOnlyList<string> GetTeacherSubjects(string username)
     {
+        username = username.Trim();
+        var normalizedUsername = Normalize(username);
+
         lock (_lock)
         {
-            return _teacherSubjects.TryGetValue(username.Trim(), out var subjects)
-                ? subjects.OrderBy(subject => subject).ToList()
-                : [];
+            using var db = CreateReadyDbContext();
+            return db.TeacherSubjects
+                .AsNoTracking()
+                .Where(item => item.Username.ToLower() == normalizedUsername)
+                .OrderBy(item => item.Subject)
+                .Select(item => item.Subject)
+                .ToList();
         }
+    }
+
+    private AppDbContext CreateReadyDbContext()
+    {
+        var db = dbContextFactory.CreateDbContext();
+        EnsureSchemaAndSeed(db);
+        return db;
+    }
+
+    private void EnsureSchemaAndSeed(AppDbContext db)
+    {
+        if (_schemaReady)
+        {
+            return;
+        }
+
+        db.Database.EnsureCreated();
+        db.Database.ExecuteSqlRaw(
+            """
+            IF OBJECT_ID(N'[dbo].[Users]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[Users] (
+                    [Username] nvarchar(120) NOT NULL,
+                    [Password] nvarchar(200) NOT NULL,
+                    [DisplayName] nvarchar(160) NOT NULL,
+                    [Role] nvarchar(40) NOT NULL,
+                    [IsDepartmentHead] bit NOT NULL CONSTRAINT [DF_Users_IsDepartmentHead] DEFAULT 0,
+                    [ManagedDepartment] nvarchar(120) NOT NULL CONSTRAINT [DF_Users_ManagedDepartment] DEFAULT N'',
+                    [CreatedAt] datetimeoffset NOT NULL,
+                    CONSTRAINT [PK_Users] PRIMARY KEY ([Username])
+                );
+            END
+
+            IF OBJECT_ID(N'[dbo].[Subjects]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[Subjects] (
+                    [Name] nvarchar(120) NOT NULL,
+                    [CreatedAt] datetimeoffset NOT NULL,
+                    CONSTRAINT [PK_Subjects] PRIMARY KEY ([Name])
+                );
+            END
+
+            IF OBJECT_ID(N'[dbo].[TeacherSubjects]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[TeacherSubjects] (
+                    [Subject] nvarchar(120) NOT NULL,
+                    [Username] nvarchar(120) NOT NULL,
+                    [AssignedAt] datetimeoffset NOT NULL,
+                    CONSTRAINT [PK_TeacherSubjects] PRIMARY KEY ([Subject])
+                );
+
+                CREATE INDEX [IX_TeacherSubjects_Username] ON [dbo].[TeacherSubjects] ([Username]);
+            END
+            """);
+
+        SeedDefaultData(db);
+        _schemaReady = true;
+    }
+
+    private static void SeedDefaultData(AppDbContext db)
+    {
+        var now = DateTimeOffset.Now;
+        var defaultSubjects = new[]
+        {
+            "Razor Pages",
+            "SignalR",
+            "RAG"
+        };
+
+        foreach (var subject in defaultSubjects)
+        {
+            var normalizedSubject = Normalize(subject);
+            if (!db.Subjects.Any(item => item.Name.ToLower() == normalizedSubject))
+            {
+                db.Subjects.Add(new SubjectEntity
+                {
+                    Name = subject,
+                    CreatedAt = now
+                });
+            }
+        }
+
+        if (!db.Users.Any())
+        {
+            db.Users.AddRange(
+                new UserEntity { Username = "admin", Password = "123", DisplayName = "Admin", Role = "Admin", IsDepartmentHead = false, ManagedDepartment = string.Empty, CreatedAt = now },
+                new UserEntity { Username = "gv_prn", Password = "123", DisplayName = "Nguyen Van A", Role = "Teacher", IsDepartmentHead = true, ManagedDepartment = "PRN222", CreatedAt = now },
+                new UserEntity { Username = "gv_ai", Password = "123", DisplayName = "Le Van C", Role = "Teacher", IsDepartmentHead = true, ManagedDepartment = "AI", CreatedAt = now },
+                new UserEntity { Username = "gv_thuong", Password = "123", DisplayName = "Tran Thi B", Role = "Teacher", IsDepartmentHead = false, ManagedDepartment = "PRN222", CreatedAt = now },
+                new UserEntity { Username = "hocsinh", Password = "123", DisplayName = "Sinh vien Demo", Role = "Student", IsDepartmentHead = false, ManagedDepartment = string.Empty, CreatedAt = now });
+        }
+
+        db.SaveChanges();
+
+        if (!db.TeacherSubjects.Any())
+        {
+            db.TeacherSubjects.AddRange(
+                new TeacherSubjectEntity { Username = "gv_prn", Subject = "Razor Pages", AssignedAt = now },
+                new TeacherSubjectEntity { Username = "gv_ai", Subject = "RAG", AssignedAt = now },
+                new TeacherSubjectEntity { Username = "gv_thuong", Subject = "SignalR", AssignedAt = now });
+            db.SaveChanges();
+        }
+    }
+
+    private static DemoUser ToModel(UserEntity user)
+    {
+        return new DemoUser(
+            user.Username,
+            user.Password,
+            user.DisplayName,
+            user.Role,
+            user.IsDepartmentHead,
+            user.ManagedDepartment);
+    }
+
+    private static string Normalize(string value)
+    {
+        return value.Trim().ToLowerInvariant();
     }
 
     private static bool IsAllowedRole(string role)

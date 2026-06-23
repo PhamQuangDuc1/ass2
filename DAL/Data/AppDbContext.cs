@@ -8,6 +8,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<DocumentChunkEntity> DocumentChunks => Set<DocumentChunkEntity>();
     public DbSet<ChatTurnEntity> ChatTurns => Set<ChatTurnEntity>();
     public DbSet<SourceMatchEntity> SourceMatches => Set<SourceMatchEntity>();
+    public DbSet<UserEntity> Users => Set<UserEntity>();
+    public DbSet<SubjectEntity> Subjects => Set<SubjectEntity>();
+    public DbSet<TeacherSubjectEntity> TeacherSubjects => Set<TeacherSubjectEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,6 +64,41 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(source => source.Chapter).HasMaxLength(120);
             entity.Property(source => source.Teacher).HasMaxLength(120);
             entity.Property(source => source.FileName).HasMaxLength(260);
+        });
+
+        modelBuilder.Entity<UserEntity>(entity =>
+        {
+            entity.ToTable("Users");
+            entity.HasKey(user => user.Username);
+            entity.Property(user => user.Username).HasMaxLength(120);
+            entity.Property(user => user.Password).HasMaxLength(200);
+            entity.Property(user => user.DisplayName).HasMaxLength(160);
+            entity.Property(user => user.Role).HasMaxLength(40);
+            entity.Property(user => user.ManagedDepartment).HasMaxLength(120);
+        });
+
+        modelBuilder.Entity<SubjectEntity>(entity =>
+        {
+            entity.ToTable("Subjects");
+            entity.HasKey(subject => subject.Name);
+            entity.Property(subject => subject.Name).HasMaxLength(120);
+        });
+
+        modelBuilder.Entity<TeacherSubjectEntity>(entity =>
+        {
+            entity.ToTable("TeacherSubjects");
+            entity.HasKey(assignment => assignment.Subject);
+            entity.Property(assignment => assignment.Username).HasMaxLength(120);
+            entity.Property(assignment => assignment.Subject).HasMaxLength(120);
+            entity.HasIndex(assignment => assignment.Username);
+            entity.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(assignment => assignment.Username)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<SubjectEntity>()
+                .WithMany()
+                .HasForeignKey(assignment => assignment.Subject)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
@@ -122,4 +160,28 @@ public sealed class SourceMatchEntity
     public int Score { get; set; }
     public string FileName { get; set; } = string.Empty;
     public bool HasOriginalFile { get; set; }
+}
+
+public sealed class UserEntity
+{
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Role { get; set; } = "Student";
+    public bool IsDepartmentHead { get; set; }
+    public string ManagedDepartment { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class SubjectEntity
+{
+    public string Name { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class TeacherSubjectEntity
+{
+    public string Username { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
+    public DateTimeOffset AssignedAt { get; set; }
 }
