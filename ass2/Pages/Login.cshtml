@@ -1,13 +1,14 @@
 @page
 @model LoginModel
 @{
-    ViewData["Title"] = "Login";
+    ViewData["Title"] = "Dang nhap";
 }
 
-<section class="login-shell">
-    <div class="login-panel">
-        <p class="eyebrow">ASS2 RAG</p>
-        <h1>Dang nhap</h1>
+<section class="auth-shell auth-shell-login">
+    <div class="auth-panel">
+        <span class="hero-badge"><i class="bi bi-mortarboard"></i> Smart Study Buddy</span>
+        <h1>&#272;&#259;ng nh&#7853;p</h1>
+        <p class="auth-intro">Ti&#7871;p t&#7909;c h&#7885;c v&#7899;i tr&#7907; l&#253; AI d&#7921;a tr&#234;n t&#224;i li&#7879;u m&#244;n h&#7885;c c&#7911;a b&#7841;n.</p>
 
         @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
         {
@@ -23,42 +24,15 @@
                 <label asp-for="Password">Password</label>
                 <input asp-for="Password" type="password" autocomplete="current-password" />
             </div>
-            <button type="submit" class="primary-action">Dang nhap</button>
+            <button type="submit" class="primary-action"><i class="bi bi-box-arrow-in-right"></i> &#272;&#259;ng nh&#7853;p</button>
         </form>
+
+        <p class="auth-switch">Ch&#432;a c&#243; t&#224;i kho&#7843;n? <a asp-page="/Register">&#272;&#259;ng k&#253; h&#7885;c sinh</a></p>
     </div>
 
-    <div class="login-panel">
-        <p class="eyebrow">Tai khoan moi</p>
-        <h1>Dang ky hoc sinh</h1>
-        @if (!string.IsNullOrWhiteSpace(Model.RegisterErrorMessage))
-        {
-            <div class="notice notice-danger">@Model.RegisterErrorMessage</div>
-        }
-        @if (!string.IsNullOrWhiteSpace(Model.RegisterMessage))
-        {
-            <div class="notice notice-success">@Model.RegisterMessage</div>
-        }
-
-        <form method="post" asp-page-handler="Register" class="upload-form">
-            <div class="form-row">
-                <label asp-for="RegisterDisplayName">Ten hien thi</label>
-                <input asp-for="RegisterDisplayName" autocomplete="name" />
-            </div>
-            <div class="form-row">
-                <label asp-for="RegisterUsername">Username</label>
-                <input asp-for="RegisterUsername" autocomplete="username" />
-            </div>
-            <div class="form-row">
-                <label asp-for="RegisterPassword">Password</label>
-                <input asp-for="RegisterPassword" type="password" autocomplete="new-password" />
-            </div>
-            <button type="submit" class="primary-action">Dang ky</button>
-        </form>
-    </div>
-
-    <div class="login-panel">
+    <aside class="demo-panel">
         <div class="section-heading">
-            <h2>Tai khoan demo</h2>
+            <h2>T&#224;i kho&#7843;n demo</h2>
             <span>password: 123</span>
         </div>
         <div class="document-list">
@@ -70,5 +44,5 @@
                 </article>
             }
         </div>
-    </div>
+    </aside>
 </section>

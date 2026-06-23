@@ -145,6 +145,45 @@ public sealed class DemoAuthService
         }
     }
 
+    public string? GetSubjectOwner(string? subject)
+    {
+        subject = subject?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(subject))
+        {
+            return null;
+        }
+
+        lock (_lock)
+        {
+            return _teacherSubjects
+                .Where(item => item.Value.Any(value => string.Equals(value, subject, StringComparison.OrdinalIgnoreCase)))
+                .Select(item => item.Key)
+                .FirstOrDefault();
+        }
+    }
+
+    public bool IsSubjectAssignedToOtherTeacher(string username, string? subject)
+    {
+        username = username.Trim();
+        var owner = GetSubjectOwner(subject);
+        return !string.IsNullOrWhiteSpace(owner)
+            && !string.Equals(owner, username, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public IReadOnlyList<string> GetUnassignedSubjects(IEnumerable<string> subjects)
+    {
+        lock (_lock)
+        {
+            return subjects
+                .Where(subject => !string.IsNullOrWhiteSpace(subject))
+                .Where(subject => !_teacherSubjects.Values.Any(values =>
+                    values.Any(value => string.Equals(value, subject, StringComparison.OrdinalIgnoreCase))))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(subject => subject)
+                .ToList();
+        }
+    }
+
     public bool AssignTeacherSubject(string username, string? subject)
     {
         username = username.Trim();
@@ -162,6 +201,15 @@ public sealed class DemoAuthService
             {
                 _teacherSubjects.Remove(username);
                 return true;
+            }
+
+            var subjectOwner = _teacherSubjects
+                .Where(item => !string.Equals(item.Key, username, StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(item => item.Value.Any(value => string.Equals(value, subject, StringComparison.OrdinalIgnoreCase)));
+
+            if (!string.IsNullOrWhiteSpace(subjectOwner.Key))
+            {
+                return false;
             }
 
             if (!_subjects.Any(item => string.Equals(item, subject, StringComparison.OrdinalIgnoreCase)))

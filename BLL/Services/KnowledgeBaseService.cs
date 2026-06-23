@@ -33,6 +33,46 @@ public sealed class KnowledgeBaseService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>>> GetChunksByDocumentAsync(
+        IEnumerable<Guid> documentIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = documentIds
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>>();
+        }
+
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
+        if (await db.Documents.AnyAsync(document => ids.Contains(document.Id) && !document.Chunks.Any(), cancellationToken))
+        {
+            await BackfillMissingChunksAsync(db, cancellationToken);
+        }
+
+        var chunks = await db.DocumentChunks
+            .AsNoTracking()
+            .Where(chunk => ids.Contains(chunk.DocumentId))
+            .OrderBy(chunk => chunk.DocumentId)
+            .ThenBy(chunk => chunk.ChunkIndex)
+            .Select(chunk => new KnowledgeDocumentChunk(
+                chunk.DocumentId,
+                chunk.ChunkIndex,
+                chunk.Content,
+                chunk.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+        return chunks
+            .GroupBy(chunk => chunk.DocumentId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<KnowledgeDocumentChunk>)group.ToList());
+    }
+
     public async Task<IReadOnlyList<ChatTurn>> GetHistoryAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);

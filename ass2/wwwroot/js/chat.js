@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
     const stream = document.getElementById("chatStream");
     const form = document.getElementById("chatForm");
     const input = document.getElementById("questionInput");
@@ -107,7 +107,7 @@
                 const snippet = source.snippet
                     ? `<small>${escapeHtml(source.snippet)}</small>`
                     : "";
-                const sourceUrl = `/Index?handler=DownloadDocument&id=${encodeURIComponent(source.documentId ?? "")}`;
+                const sourceUrl = `/Chatbot?handler=DownloadDocument&id=${encodeURIComponent(source.documentId ?? "")}`;
                 const originalLink = source.hasOriginalFile
                     ? `<a href="${sourceUrl}">Tai ${escapeHtml(source.fileName || "nguon goc")}</a>`
                     : "";
@@ -176,7 +176,7 @@
         detailsLine.textContent = `${uploadedDocument.fileName ?? ""} | Upload: ${uploadedDocument.uploadedBy ?? ""} | ${uploadedDocument.uploadedAt ?? ""}`;
 
         const originalLink = document.createElement("a");
-        originalLink.href = `/Index?handler=DownloadDocument&id=${encodeURIComponent(uploadedDocument.id ?? "")}`;
+        originalLink.href = `/Chatbot?handler=DownloadDocument&id=${encodeURIComponent(uploadedDocument.id ?? "")}`;
         originalLink.textContent = "Tai file goc";
         originalLink.hidden = !uploadedDocument.hasOriginalFile;
 
@@ -190,9 +190,55 @@
         content.textContent = uploadedDocument.content ?? "";
 
         viewer.append(summary, content);
-        item.append(header, meta, detailsLine, originalLink, viewer);
+
+        const chunkViewer = createChunkViewer(uploadedDocument.chunks ?? []);
+        item.append(header, meta, detailsLine, originalLink, viewer, chunkViewer);
 
         return item;
+    }
+
+    function createChunkViewer(chunks) {
+        const viewer = document.createElement("details");
+        viewer.className = "document-viewer chunk-viewer";
+
+        const summary = document.createElement("summary");
+        summary.textContent = `Xem chunks da index (${chunks.length})`;
+        viewer.append(summary);
+
+        if (chunks.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "empty-chunks";
+            empty.textContent = "Chua co chunks cho tai lieu nay.";
+            viewer.append(empty);
+            return viewer;
+        }
+
+        const list = document.createElement("ol");
+        list.className = "chunk-list";
+
+        chunks.forEach((chunk) => {
+            const item = document.createElement("li");
+
+            const heading = document.createElement("div");
+            heading.className = "chunk-heading";
+
+            const title = document.createElement("strong");
+            title.textContent = `Chunk ${Number(chunk.chunkIndex ?? 0) + 1}`;
+
+            const length = document.createElement("span");
+            const contentText = chunk.content ?? "";
+            length.textContent = `${contentText.length} ky tu`;
+
+            const content = document.createElement("pre");
+            content.textContent = contentText;
+
+            heading.append(title, length);
+            item.append(heading, content);
+            list.append(item);
+        });
+
+        viewer.append(list);
+        return viewer;
     }
 
     function setupTabs() {
@@ -299,3 +345,4 @@
         select.append(option);
     }
 })();
+

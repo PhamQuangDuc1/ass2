@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using BLL.Models;
 using BLL.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -12,8 +12,6 @@ public class LoginModel(DemoAuthService authService) : PageModel
 {
     public IReadOnlyList<DemoUser> DemoUsers => authService.Users;
     public string? ErrorMessage { get; private set; }
-    public string? RegisterErrorMessage { get; private set; }
-    public string? RegisterMessage { get; private set; }
 
     [BindProperty]
     public string Username { get; set; } = string.Empty;
@@ -21,14 +19,8 @@ public class LoginModel(DemoAuthService authService) : PageModel
     [BindProperty]
     public string Password { get; set; } = string.Empty;
 
-    [BindProperty]
-    public string RegisterUsername { get; set; } = string.Empty;
 
-    [BindProperty]
-    public string RegisterPassword { get; set; } = string.Empty;
 
-    [BindProperty]
-    public string RegisterDisplayName { get; set; } = string.Empty;
 
     public void OnGet()
     {
@@ -62,22 +54,8 @@ public class LoginModel(DemoAuthService authService) : PageModel
                 ExpiresUtc = DateTimeOffset.UtcNow.AddHours(6)
             });
 
-        return RedirectToPage("/Index");
+        return RedirectToPage("/Chatbot");
     }
 
-    public IActionResult OnPostRegister()
-    {
-        var result = authService.RegisterStudent(RegisterUsername, RegisterPassword, RegisterDisplayName);
-        if (result == RegisterResult.Success)
-        {
-            RegisterMessage = "Dang ky thanh cong. Tai khoan moi mac dinh la Hoc sinh.";
-            Username = RegisterUsername;
-            return Page();
-        }
-
-        RegisterErrorMessage = result == RegisterResult.DuplicateUsername
-            ? "Username da ton tai."
-            : "Vui long nhap day du username, password va ten hien thi.";
-        return Page();
-    }
 }
+

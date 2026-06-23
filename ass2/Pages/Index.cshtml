@@ -1,357 +1,104 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "Student RAG Chatbot";
+    ViewData["Title"] = "Smart Study Buddy";
 }
 
-<section class="app-workspace">
-    <header class="workspace-header">
-        <div>
-            <p class="eyebrow">ASS2 PRN222</p>
-            <h1>Student RAG Chatbot</h1>
-        </div>
-        <div class="user-card">
-            <strong>@Model.CurrentUserName</strong>
-            <span>
-                @Model.CurrentRole
-            </span>
-        </div>
-    </header>
-
-    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
-    {
-        <div class="notice notice-success">@Model.StatusMessage</div>
-    }
-
-    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-    {
-        <div class="notice notice-danger">@Model.ErrorMessage</div>
-    }
-
-    <nav class="feature-tabs" aria-label="Chuc nang">
-        <button type="button" class="tab-button active" data-tab-target="chatTab">Chat</button>
-        <button type="button" class="tab-button" data-tab-target="documentsTab">Tai lieu</button>
-        @if (Model.CanSeeUploadTab)
-        {
-            <button type="button" class="tab-button" data-tab-target="uploadTab">Upload</button>
-        }
-        @if (Model.CurrentRole == "Admin")
-        {
-            <button type="button" class="tab-button" data-tab-target="adminTab">Admin</button>
-            <button type="button" class="tab-button" data-tab-target="subjectsTab">Mon hoc</button>
-        }
-        <button type="button" class="tab-button" data-tab-target="benchmarkTab">Benchmark</button>
-    </nav>
-
-    <section class="tab-panel active" id="chatTab">
-        <div class="tab-heading">
-            <div>
-                <p class="eyebrow">Chat & Hoi dap</p>
-                <h2>Hoi theo ngu canh tai lieu</h2>
-            </div>
-            <div class="tab-actions">
-                <span class="live-pill" id="liveStatus">Connecting</span>
-                <span class="session-chip">Session @Model.SessionId[..8]</span>
+<section class="landing-page">
+    <section class="hero-section" id="home">
+        <div class="hero-copy">
+            <span class="hero-badge"><i class="bi bi-stars"></i> AI Learning Assistant</span>
+            <h1>H&#7885;c hi&#7879;u qu&#7843; h&#417;n v&#7899;i AI h&#7895; tr&#7907; t&#7915; t&#224;i li&#7879;u m&#244;n h&#7885;c</h1>
+            <p>Upload t&#224;i li&#7879;u, &#273;&#7863;t c&#226;u h&#7887;i t&#7921; nhi&#234;n v&#224; nh&#7853;n c&#226;u tr&#7843; l&#7901;i c&#243; tr&#237;ch d&#7851;n ngu&#7891;n b&#7857;ng c&#244;ng ngh&#7879; RAG.</p>
+            <div class="hero-actions">
+                <a class="btn btn-primary btn-lg" asp-page="/Login"><i class="bi bi-box-arrow-in-right"></i> &#272;&#259;ng nh&#7853;p</a>
+                <a class="btn btn-outline-primary btn-lg" asp-page="/Register"><i class="bi bi-person-plus"></i> &#272;&#259;ng k&#253;</a>
             </div>
         </div>
 
-        <section class="chat-stream" id="chatStream" aria-live="polite">
-            <article class="message message-bot">
-                <strong>Bot</strong>
-                <p>Nhap cau hoi ve Razor Pages, SignalR, RAG hoac tai lieu vua upload. Cau tra loi se kem nguon tai lieu.</p>
+        <div class="chatbot-mockup" aria-label="Smart Study Buddy chatbot preview">
+            <div class="mockup-topbar">
+                <div>
+                    <span class="mockup-dot"></span>
+                    <span class="mockup-dot"></span>
+                    <span class="mockup-dot"></span>
+                </div>
+                <span>Smart Study Buddy</span>
+            </div>
+            <div class="mockup-body">
+                <div class="mock-message mock-message-user">
+                    <span>Sinh vi&#234;n</span>
+                    <p>RAG l&#224; g&#236;?</p>
+                </div>
+                <div class="mock-message mock-message-ai">
+                    <span>AI</span>
+                    <p>RAG l&#224; ph&#432;&#417;ng ph&#225;p k&#7871;t h&#7907;p truy xu&#7845;t t&#224;i li&#7879;u v&#224; m&#244; h&#236;nh ng&#244;n ng&#7919; &#273;&#7875; t&#7841;o c&#226;u tr&#7843; l&#7901;i ch&#237;nh x&#225;c h&#417;n.</p>
+                </div>
+                <div class="source-card">
+                    <i class="bi bi-file-earmark-text"></i>
+                    <div>
+                        <span>Source</span>
+                        <strong>Chapter2_RAG.pdf</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="landing-section" id="features">
+        <div class="section-title">
+            <span class="eyebrow">Features</span>
+            <h2>H&#7885;c t&#7853;p th&#244;ng minh h&#417;n trong m&#7897;t workspace g&#7885;n g&#224;ng</h2>
+        </div>
+        <div class="feature-grid">
+            <article class="feature-card">
+                <i class="bi bi-journal-text"></i>
+                <h3>Qu&#7843;n l&#253; t&#224;i li&#7879;u</h3>
+                <ul>
+                    <li>Upload PDF</li>
+                    <li>Upload DOCX</li>
+                    <li>Qu&#7843;n l&#253; theo m&#244;n h&#7885;c</li>
+                </ul>
             </article>
-        </section>
-
-        <form class="chat-input" id="chatForm">
-            <input id="questionInput" autocomplete="off" placeholder="VD: SignalR dung de lam gi trong bai nay?" />
-            <button type="submit">Gui</button>
-        </form>
-    </section>
-
-    <section class="tab-panel" id="documentsTab" hidden>
-        <div class="tab-heading">
-            <div>
-                <p class="eyebrow">Quan ly tai lieu</p>
-                <h2>Danh sach tai lieu da index</h2>
-            </div>
-            <span class="session-chip"><span id="visibleDocumentCount">@Model.Documents.Count</span>/<span id="totalDocumentCount">@Model.Documents.Count</span> tai lieu</span>
-        </div>
-
-        <div class="document-management">
-            <div class="document-filters" aria-label="Loc tai lieu">
-                <div class="form-row">
-                    <label for="subjectFilter">Mon hoc</label>
-                    <select id="subjectFilter">
-                        <option value="">Tat ca mon hoc</option>
-                        @foreach (var subject in Model.SubjectOptions)
-                        {
-                            <option value="@subject">@subject</option>
-                        }
-                    </select>
-                </div>
-                <div class="form-row">
-                    <label for="chapterFilter">Chuong</label>
-                    <select id="chapterFilter">
-                        <option value="">Tat ca chuong</option>
-                        @foreach (var chapter in Model.ChapterOptions)
-                        {
-                            <option value="@chapter">@chapter</option>
-                        }
-                    </select>
-                </div>
-                <button type="button" class="secondary-action" id="clearDocumentFilters">Xoa loc</button>
-            </div>
-
-            <div class="subject-chapter-summary" aria-label="Thong ke theo mon hoc va chuong">
-                @foreach (var summary in Model.SubjectChapterSummaries)
-                {
-                    <span data-summary-subject="@summary.Subject" data-summary-chapter="@summary.Chapter">
-                        @summary.Subject / @summary.Chapter: @summary.DocumentCount
-                    </span>
-                }
-            </div>
-        </div>
-
-        <div class="document-list document-list-wide" id="documentList">
-            @foreach (var document in Model.Documents)
-            {
-                <article class="document-item" data-subject="@document.Subject" data-chapter="@document.Chapter">
-                    <div class="document-header">
-                        <strong>@document.Title</strong>
-                        <span class="department-badge">Bo mon: @document.Department</span>
-                    </div>
-                    <div class="document-meta">
-                        <span>Mon: @document.Subject</span>
-                        <span>Chuong: @document.Chapter</span>
-                        <span>GV: @document.Teacher</span>
-                    </div>
-                    <small>@document.FileName | Upload: @document.UploadedBy | @document.UploadedAt.ToString("dd/MM HH:mm")</small>
-                    @if (document.HasOriginalFile)
-                    {
-                        <a class="secondary-action" asp-page-handler="DownloadDocument" asp-route-id="@document.Id">Tai file goc</a>
-                    }
-                    <details class="document-viewer">
-                        <summary>Xem tai lieu</summary>
-                        <pre>@document.Content</pre>
-                    </details>
-                </article>
-            }
+            <article class="feature-card">
+                <i class="bi bi-chat-dots"></i>
+                <h3>H&#7887;i &#273;&#225;p v&#7899;i AI</h3>
+                <ul>
+                    <li>Chat theo ng&#7919; c&#7843;nh</li>
+                    <li>Tr&#7843; l&#7901;i d&#7921;a tr&#234;n t&#224;i li&#7879;u</li>
+                    <li>H&#7897;i tho&#7841;i li&#234;n t&#7909;c</li>
+                </ul>
+            </article>
+            <article class="feature-card">
+                <i class="bi bi-search-heart"></i>
+                <h3>Tr&#237;ch d&#7851;n ngu&#7891;n</h3>
+                <ul>
+                    <li>Hi&#7875;n th&#7883; ngu&#7891;n t&#224;i li&#7879;u</li>
+                    <li>Ki&#7875;m ch&#7913;ng n&#7897;i dung</li>
+                    <li>H&#7885;c t&#7853;p &#273;&#225;ng tin c&#7853;y</li>
+                </ul>
+            </article>
         </div>
     </section>
 
-    @if (Model.CanSeeUploadTab)
-    {
-        <section class="tab-panel" id="uploadTab" hidden>
-            <div class="tab-heading">
-                <div>
-                    <p class="eyebrow">Upload & Index</p>
-                    <h2>Them tai lieu vao kho</h2>
-                </div>
-            </div>
-
-            <div class="role-policy">
-                <strong>Quyen upload cua ban</strong>
-                <span>
-                    @if (Model.CurrentRole == "Admin")
-                    {
-                        <text>Admin duoc upload tai lieu cho moi mon hoc.</text>
-                    }
-                    else
-                    {
-                        <text>Ban chi upload duoc mon da duoc Admin gan: @string.Join(", ", Model.UploadSubjectOptions).</text>
-                    }
-                </span>
-            </div>
-
-            <form class="upload-form upload-form-wide" method="post" enctype="multipart/form-data" asp-page-handler="Upload">
-                <div class="form-grid">
-                    <div class="form-row">
-                        <label asp-for="Subject">Mon hoc</label>
-                        <select asp-for="Subject" disabled="@(Model.UploadSubjectOptions.Count == 0 ? "disabled" : null)">
-                            @foreach (var subject in Model.UploadSubjectOptions)
-                            {
-                                <option value="@subject">@subject</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="form-row">
-                        <label asp-for="Chapter">Chuong</label>
-                        <input asp-for="Chapter" />
-                    </div>
-                    <div class="form-row">
-                        <label asp-for="Teacher">Giang vien</label>
-                        <input asp-for="Teacher" />
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <label asp-for="Title">Ten tai lieu</label>
-                    <input asp-for="Title" placeholder="VD: Slide SignalR Chapter 2" />
-                </div>
-
-                <div class="form-row">
-                    <label asp-for="UploadFile">PDF, DOCX, PPTX, TXT</label>
-                    <input asp-for="UploadFile" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.csv" />
-                </div>
-
-                <div class="form-row">
-                    <label asp-for="ManualContent">Noi dung/tom tat de index</label>
-                    <textarea asp-for="ManualContent" rows="6" placeholder="Nhap noi dung chinh cua tai lieu de chatbot tra loi chinh xac hon."></textarea>
-                </div>
-
-                <button type="submit" class="primary-action">Upload & index</button>
-            </form>
-        </section>
-    }
-
-    @if (Model.CurrentRole == "Admin")
-    {
-        <section class="tab-panel" id="adminTab" hidden>
-            <div class="tab-heading">
-                <div>
-                    <p class="eyebrow">Admin</p>
-                    <h2>Set role tai khoan</h2>
-                </div>
-                <span class="session-chip">@Model.Users.Count tai khoan</span>
-            </div>
-
-            <div class="document-list document-list-wide">
-                @foreach (var user in Model.Users)
-                {
-                    <article class="document-item">
-                        <div class="document-header">
-                            <strong>@user.Username</strong>
-                            <span class="department-badge">@user.Role</span>
-                        </div>
-                        <div class="document-meta">
-                            <span>@user.DisplayName</span>
-                            <span>Mon duoc gan: @(Model.GetAssignedSubjects(user.Username).Count > 0 ? string.Join(", ", Model.GetAssignedSubjects(user.Username)) : "Chua co")</span>
-                        </div>
-                        <form method="post" asp-page-handler="UpdateRole" class="role-update-form">
-                            <input type="hidden" name="RoleUsername" value="@user.Username" />
-                            <div class="form-row">
-                                <label for="role-@user.Username">Role</label>
-                                <select id="role-@user.Username" name="Role">
-                                    <option value="Student" selected="@(user.Role == "Student")">Student</option>
-                                    <option value="Teacher" selected="@(user.Role == "Teacher")">Teacher</option>
-                                    <option value="Admin" selected="@(user.Role == "Admin")">Admin</option>
-                                </select>
-                            </div>
-                            <div class="form-row">
-                                <label for="subject-@user.Username">Mon hoc quan ly</label>
-                                <select id="subject-@user.Username" name="AssignSubject">
-                                    <option value="">Chua gan mon</option>
-                                    @foreach (var subject in Model.SubjectOptions)
-                                    {
-                                        <option value="@subject" selected="@(Model.GetAssignedSubjects(user.Username).Contains(subject, StringComparer.OrdinalIgnoreCase))">@subject</option>
-                                    }
-                                </select>
-                            </div>
-                            <button type="submit" class="secondary-action">Cap nhat</button>
-                        </form>
-                    </article>
-                }
-            </div>
-        </section>
-
-        <section class="tab-panel" id="subjectsTab" hidden>
-            <div class="tab-heading">
-                <div>
-                    <p class="eyebrow">Mon hoc</p>
-                    <h2>Quan ly mon hoc va giao vien</h2>
-                </div>
-                <span class="session-chip">@Model.SubjectOptions.Count mon hoc</span>
-            </div>
-
-            <div class="admin-tools">
-                <form method="post" asp-page-handler="CreateSubject" class="role-update-form">
-                    <div class="form-row">
-                        <label asp-for="NewSubject">Mon hoc moi</label>
-                        <input asp-for="NewSubject" placeholder="VD: Entity Framework" />
-                    </div>
-                    <button type="submit" class="secondary-action">Tao mon</button>
-                </form>
-            </div>
-
-            <div class="subject-chapter-summary">
-                @foreach (var subject in Model.SubjectOptions)
-                {
-                    <span>@subject</span>
-                }
-            </div>
-        </section>
-    }
-
-    <section class="tab-panel" id="benchmarkTab" hidden>
-        <div class="tab-heading">
-            <div>
-                <p class="eyebrow">RAG benchmark</p>
-                <h2>So sanh model demo</h2>
-            </div>
-            <span class="session-chip">Du lieu thuc nghiem</span>
+    <section class="landing-section about-section" id="about">
+        <div class="section-title">
+            <span class="eyebrow">About</span>
+            <h2>T&#7841;i sao n&#234;n s&#7917; d&#7909;ng Smart Study Buddy?</h2>
         </div>
-
-        <form method="post" asp-page-handler="RunBenchmark">
-            <button type="submit" class="primary-action">Chay benchmark</button>
-        </form>
-
-        @if (Model.BenchmarkResults is null)
-        {
-            <p>Chay benchmark de do tren tai lieu hien co. Provider chua co API key se duoc danh dau, khong dung so lieu gia.</p>
-        }
-        else
-        {
-            <h3>Chunking strategy</h3>
-            <table class="benchmark-table">
-                <thead><tr><th>Strategy</th><th>P@@3</th><th>R@@3</th><th>MRR</th><th>Latency</th></tr></thead>
-                <tbody>
-                @foreach (var result in Model.BenchmarkResults.ChunkingResults)
-                {
-                    <tr><td>@result.Name</td><td>@result.PrecisionAt3.ToString("0.000")</td><td>@result.RecallAt3.ToString("0.000")</td><td>@result.MeanReciprocalRank.ToString("0.000")</td><td>@result.AverageLatencyMs.ToString("0.0") ms</td></tr>
-                }
-                </tbody>
-            </table>
-
-            <h3>Embedding model</h3>
-            <table class="benchmark-table">
-                <thead><tr><th>Model</th><th>Status</th><th>P@@3</th><th>R@@3</th><th>MRR</th><th>Latency</th><th>Ghi chu</th></tr></thead>
-                <tbody>
-                @foreach (var result in Model.BenchmarkResults.EmbeddingResults)
-                {
-                    <tr><td>@result.Name</td><td>@result.Status</td><td>@result.PrecisionAt3.ToString("0.000")</td><td>@result.RecallAt3.ToString("0.000")</td><td>@result.MeanReciprocalRank.ToString("0.000")</td><td>@result.AverageLatencyMs.ToString("0.0") ms</td><td>@result.Note</td></tr>
-                }
-                </tbody>
-            </table>
-
-            <h3>RAG vs fine-tuned model</h3>
-            <table class="benchmark-table">
-                <thead><tr><th>Approach</th><th>Status</th><th>Document coverage</th><th>Latency</th><th>Ghi chu</th></tr></thead>
-                <tbody>
-                @foreach (var result in Model.BenchmarkResults.GenerationResults)
-                {
-                    <tr><td>@result.Approach</td><td>@result.Status</td><td>@result.DocumentCoverage.ToString("0.000")</td><td>@result.AverageLatencyMs.ToString("0.0") ms</td><td>@result.Note</td></tr>
-                }
-                </tbody>
-            </table>
-        }
-
-        <div class="subject-summary">
-            @foreach (var subject in Model.SubjectCounts)
-            {
-                <span>@subject.Key: @subject.Value</span>
-            }
+        <div class="benefit-grid">
+            <article class="benefit-item">
+                <i class="bi bi-clock-history"></i>
+                <span>Ti&#7871;t ki&#7879;m th&#7901;i gian h&#7885;c</span>
+            </article>
+            <article class="benefit-item">
+                <i class="bi bi-lightning-charge"></i>
+                <span>T&#236;m ki&#7871;m ki&#7871;n th&#7913;c nhanh h&#417;n</span>
+            </article>
+            <article class="benefit-item">
+                <i class="bi bi-patch-check"></i>
+                <span>H&#7885;c t&#7853;p d&#7921;a tr&#234;n t&#224;i li&#7879;u ch&#237;nh th&#7889;ng</span>
+            </article>
         </div>
     </section>
 </section>
-
-@section Scripts {
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-    <script>
-        window.ass2Chat = {
-            sessionId: '@Model.SessionId',
-            activeTab: '@Model.ActiveTab',
-            initialHistory: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.InitialHistory, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))
-        };
-    </script>
-    <script src="~/js/chat.js" asp-append-version="true"></script>
-}

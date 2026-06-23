@@ -1,43 +1,120 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+@using System.Security.Claims
+@{
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var displayName = User.Identity?.Name ?? "User";
+    var currentRole = User.FindFirstValue(ClaimTypes.Role) ?? "Student";
+    var workspaceLabel = currentRole switch
+    {
+        "Admin" => "Trang quan tri",
+        "Teacher" => "Trang giang vien",
+        _ => "Trang hoc sinh"
+    };
+    var initials = string.Join("", displayName
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Take(2)
+        .Select(part => part[0]))
+        .ToUpperInvariant();
+
+    if (string.IsNullOrWhiteSpace(initials))
+    {
+        initials = "U";
+    }
+}
+<!DOCTYPE html>
+<html lang="vi">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - ASS2</title>
+    <title>@ViewData["Title"] - Smart Study Buddy</title>
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/ass2.styles.css" asp-append-version="true" />
 </head>
 <body>
     <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light app-navbar">
+        <nav class="navbar navbar-expand-lg navbar-light app-navbar fixed-top">
             <div class="container">
-                <a class="navbar-brand" asp-area="" asp-page="/Index">ASS2 RAG</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                @if (isAuthenticated)
+                {
+                    <a class="navbar-brand" asp-area="" asp-page="/Chatbot">&#127891; Smart Study Buddy</a>
+                }
+                else
+                {
+                    <a class="navbar-brand" asp-area="" asp-page="/Index">&#127891; Smart Study Buddy</a>
+                }
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar"
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link" asp-area="" asp-page="/Index">Chatbot</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" asp-area="" asp-page="/Privacy">Privacy</a>
-                        </li>
-                    </ul>
+                <div class="collapse navbar-collapse" id="mainNavbar">
+                    @if (!isAuthenticated)
+                    {
+                        <ul class="navbar-nav mx-auto">
+                            <li class="nav-item">
+                                <a class="nav-link" href="/#home">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/#features">Features</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="/#about">About</a>
+                            </li>
+                        </ul>
+                    }
+                    else
+                    {
+                        <div class="app-nav-status mx-auto">
+                            <i class="bi bi-shield-check"></i>
+                            <span>@workspaceLabel</span>
+                        </div>
+                    }
+
                     <div class="auth-nav">
-                        @if (User.Identity?.IsAuthenticated == true)
+                        @if (isAuthenticated)
                         {
-                            <span>@User.Identity.Name</span>
-                            <form method="post" asp-page="/Logout">
-                                <button type="submit">Dang xuat</button>
-                            </form>
+                            <div class="dropdown account-menu">
+                                <button class="avatar-button dropdown-toggle" type="button" id="accountMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <span class="avatar-circle">@initials</span>
+                                    <span class="avatar-meta">
+                                        <strong>@displayName</strong>
+                                        <small>@currentRole</small>
+                                    </span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end account-dropdown" aria-labelledby="accountMenuButton">
+                                    <li class="dropdown-header">
+                                        <strong>@displayName</strong>
+                                        <span>@currentRole</span>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" asp-page="/Chatbot">
+                                            <i class="bi bi-person-workspace"></i>
+                                            @workspaceLabel
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" asp-page="/Chatbot">
+                                            <i class="bi bi-chat-dots"></i>
+                                            Chatbot AI
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider" /></li>
+                                    <li>
+                                        <form method="post" asp-page="/Logout" class="dropdown-logout-form">
+                                            <button type="submit" class="dropdown-item logout-item">
+                                                <i class="bi bi-box-arrow-right"></i>
+                                                &#272;&#259;ng xu&#7845;t
+                                            </button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </div>
                         }
                         else
                         {
-                            <a class="nav-link" asp-page="/Login">Dang nhap</a>
+                            <a class="nav-link" asp-page="/Login">&#272;&#259;ng nh&#7853;p</a>
+                            <a class="btn btn-primary nav-register" asp-page="/Register">&#272;&#259;ng k&#253;</a>
                         }
                     </div>
                 </div>
@@ -45,16 +122,20 @@
         </nav>
     </header>
     <div class="app-container">
-        <main role="main" class="pb-3">
+        <main role="main">
             @RenderBody()
         </main>
     </div>
 
-    <footer class="footer text-muted">
-        <div class="container">
-            &copy; 2026 - ASS2 Student RAG Chatbot
-        </div>
-    </footer>
+    @if (!isAuthenticated)
+    {
+        <footer class="footer text-muted">
+            <div class="container footer-inner">
+                <strong>&#127891; Smart Study Buddy</strong>
+                <span>Copyright 2026</span>
+            </div>
+        </footer>
+    }
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>

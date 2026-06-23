@@ -13,6 +13,12 @@ public sealed record KnowledgeDocument(
     DateTimeOffset UploadedAt,
     bool HasOriginalFile);
 
+public sealed record KnowledgeDocumentChunk(
+    Guid DocumentId,
+    int ChunkIndex,
+    string Content,
+    DateTimeOffset CreatedAt);
+
 public sealed record SourceMatch(
     Guid DocumentId,
     string Title,
