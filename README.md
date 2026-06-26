@@ -53,6 +53,10 @@ ass2/
 Ass2RagChatbot
 ```
 
+## Sơ đồ ERD / kiến trúc hệ thống
+
+![EduAI System Architecture](./docs/images/erd-system-architecture.jpg)
+
 Các bảng chính:
 
 - `Documents`: lưu tài liệu đã upload/index.
@@ -196,4 +200,3 @@ Repository không nên public API key, password thật hoặc connection string 
 - `BLL/Services/KnowledgeBaseService.cs`: xử lý tài liệu, RAG và chat.
 - `BLL/Services/DemoAuthService.cs`: xử lý tài khoản, role, môn học.
 - `BLL/Services/GeminiAiService.cs`: gọi Gemini API.
-
