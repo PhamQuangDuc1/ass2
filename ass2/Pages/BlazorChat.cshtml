@@ -1,0 +1,11 @@
+@page
+@using ass2.Components
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@{
+    ViewData["Title"] = "Blazor SignalR";
+}
+
+<component type="typeof(BlazorSignalRChat)" render-mode="ServerPrerendered" />
+
+<script src="_framework/blazor.server.js"></script>

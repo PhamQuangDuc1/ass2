@@ -1,0 +1,197 @@
+@namespace ass2.Components
+@using ass2.Hubs
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+@inject NavigationManager Navigation
+@inject InternalSignalRToken InternalToken
+
+@if (ShowHeader)
+{
+    <section class="app-workspace">
+        <header class="workspace-header">
+            <div>
+                <p class="eyebrow">Blazor Server + SignalR</p>
+                <h1>Chat realtime bang C#</h1>
+            </div>
+            <div class="user-card">
+                <strong>@ConnectionLabel</strong>
+                <span>@StatusMessage</span>
+            </div>
+        </header>
+
+        @ChatPanel
+    </section>
+}
+else
+{
+    @ChatPanel
+}
+
+@code {
+    [Parameter]
+    public bool ShowHeader { get; set; } = true;
+
+    private HubConnection? hubConnection;
+    private string Question { get; set; } = string.Empty;
+    private string StatusMessage { get; set; } = "Dang ket noi...";
+    private string ConnectionLabel { get; set; } = "SignalR";
+    private readonly List<ChatMessageItem> Messages = [];
+
+    private bool CanSend =>
+        hubConnection?.State == HubConnectionState.Connected
+        && !string.IsNullOrWhiteSpace(Question);
+
+    private string ConnectionStateText => hubConnection?.State.ToString() ?? "Not started";
+
+    private RenderFragment ChatPanel => @<section class="tab-panel active">
+        <div class="tab-heading">
+            <div>
+                <p class="eyebrow">C# HubConnection</p>
+                <h2>Gui nhan qua /chatHub</h2>
+            </div>
+            <span class="session-chip">@ConnectionStateText</span>
+        </div>
+
+        <section class="chat-stream">
+            @if (Messages.Count == 0)
+            {
+                <article class="message message-bot">
+                    <strong>Bot</strong>
+                    <p>Nhap cau hoi, Blazor component se dung HubConnection bang C# de goi SignalR hub.</p>
+                </article>
+            }
+
+            @foreach (var item in Messages)
+            {
+                <article class="message @(item.IsUser ? "message-user" : "message-bot")">
+                    <strong>@item.Author</strong>
+                    <p>@item.Text</p>
+
+                    @if (item.Sources.Count > 0)
+                    {
+                        <div class="source-block">
+                            <span>Nguon tai lieu</span>
+                            <ul class="source-list">
+                                @foreach (var source in item.Sources)
+                                {
+                                    <li>
+                                        <strong>@source.Title | @source.Subject | @source.Chapter | GV: @source.Teacher</strong>
+                                        @if (!string.IsNullOrWhiteSpace(source.Snippet))
+                                        {
+                                            <small>@source.Snippet</small>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </article>
+            }
+        </section>
+
+        <form class="chat-input" @onsubmit="SendQuestionAsync" @onsubmit:preventDefault>
+            <input @bind="Question" autocomplete="off" placeholder="VD: SignalR hoat dong nhu the nao?" />
+            <button type="submit" disabled="@(!CanSend)">Gui bang C#</button>
+        </form>
+    </section>;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var hubUri = Navigation.ToAbsoluteUri("/chatHub");
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(hubUri, options =>
+            {
+                options.Headers.Add(InternalSignalRToken.HeaderName, InternalToken.Value);
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<string>("ReceiveUserQuestion", question =>
+        {
+            Messages.Add(new ChatMessageItem("Sinh vien", question, true, []));
+            return InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<ChatTurnPayload>("ReceiveBotAnswer", turn =>
+        {
+            Messages.Add(new ChatMessageItem("Bot", turn.Answer, false, turn.Sources));
+            StatusMessage = "Da nhan cau tra loi realtime.";
+            return InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<string>("ReceiveChatError", message =>
+        {
+            Messages.Add(new ChatMessageItem("Bot", message, false, []));
+            StatusMessage = "Co loi khi xu ly cau hoi.";
+            return InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.Reconnecting += _ =>
+        {
+            StatusMessage = "Dang ket noi lai...";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        hubConnection.Reconnected += _ =>
+        {
+            StatusMessage = "Da ket noi lai.";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        hubConnection.Closed += _ =>
+        {
+            StatusMessage = "Da ngat ket noi.";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        await hubConnection.StartAsync();
+        StatusMessage = "Da ket noi SignalR bang C#.";
+    }
+
+    private async Task SendQuestionAsync()
+    {
+        if (!CanSend || hubConnection is null)
+        {
+            return;
+        }
+
+        var question = Question.Trim();
+        Question = string.Empty;
+        StatusMessage = "Dang gui cau hoi...";
+        await hubConnection.InvokeAsync("SendQuestion", question);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private sealed record ChatMessageItem(
+        string Author,
+        string Text,
+        bool IsUser,
+        IReadOnlyList<SourcePayload> Sources);
+
+    private sealed record ChatTurnPayload(
+        string Question,
+        string Answer,
+        IReadOnlyList<SourcePayload> Sources,
+        DateTimeOffset CreatedAt);
+
+    private sealed record SourcePayload(
+        Guid DocumentId,
+        string Title,
+        string Subject,
+        string Chapter,
+        string Teacher,
+        string Snippet,
+        int Score,
+        string FileName,
+        bool HasOriginalFile,
+        string DownloadUrl);
+}

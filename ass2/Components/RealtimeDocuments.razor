@@ -1,0 +1,240 @@
+@namespace ass2.Components
+@using ass2.Hubs
+@using BLL.Models
+@using BLL.Services
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+@inject KnowledgeBaseService KnowledgeBase
+@inject NavigationManager Navigation
+@inject InternalSignalRToken InternalToken
+
+<div class="document-management">
+    <div class="document-filters" aria-label="Loc tai lieu">
+        <div class="form-row">
+            <label for="subjectFilterBlazor">Mon hoc</label>
+            <select id="subjectFilterBlazor" @bind="SubjectFilter">
+                <option value="">Tat ca mon hoc</option>
+                @foreach (var subject in SubjectOptions)
+                {
+                    <option value="@subject">@subject</option>
+                }
+            </select>
+        </div>
+        <div class="form-row">
+            <label for="chapterFilterBlazor">Chuong</label>
+            <select id="chapterFilterBlazor" @bind="ChapterFilter">
+                <option value="">Tat ca chuong</option>
+                @foreach (var chapter in ChapterOptions)
+                {
+                    <option value="@chapter">@chapter</option>
+                }
+            </select>
+        </div>
+        <button type="button" class="secondary-action" @onclick="ClearFilters">Xoa loc</button>
+    </div>
+
+    <div class="subject-chapter-summary" aria-label="Thong ke theo mon hoc va chuong">
+        @foreach (var summary in SubjectChapterSummaries)
+        {
+            <span>@summary.Subject / @summary.Chapter: @summary.DocumentCount</span>
+        }
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(StatusMessage))
+{
+    <div class="notice notice-success">@StatusMessage</div>
+}
+
+<div class="document-list document-list-wide">
+    @foreach (var document in FilteredDocuments)
+    {
+        <article class="document-item @(document.IsNew ? "document-item-new" : "")" data-document-id="@document.Id" data-subject="@document.Subject" data-chapter="@document.Chapter">
+            <div class="document-header">
+                <strong>@document.Title</strong>
+                <span class="department-badge">Bo mon: @document.Department</span>
+            </div>
+            <div class="document-meta">
+                <span>Mon: @document.Subject</span>
+                <span>Chuong: @document.Chapter</span>
+                <span>GV: @document.Teacher</span>
+            </div>
+            <small>@document.FileName | Upload: @document.UploadedBy | @document.UploadedAt</small>
+            @if (document.HasOriginalFile)
+            {
+                <a class="secondary-action" href="@document.DownloadUrl">Tai file goc</a>
+            }
+            <details class="document-viewer">
+                <summary>Xem tai lieu</summary>
+                <pre>@document.Content</pre>
+            </details>
+            <details class="document-viewer chunk-viewer">
+                <summary>Xem chunks da index (@document.Chunks.Count)</summary>
+                @if (document.Chunks.Count == 0)
+                {
+                    <p class="empty-chunks">Tai lieu moi da duoc index. Tai lai trang de xem chi tiet chunks neu can.</p>
+                }
+                else
+                {
+                    <ol class="chunk-list">
+                        @foreach (var chunk in document.Chunks)
+                        {
+                            <li>
+                                <div class="chunk-heading">
+                                    <strong>Chunk @(chunk.ChunkIndex + 1)</strong>
+                                    <span>@chunk.Content.Length ky tu</span>
+                                </div>
+                                <pre>@chunk.Content</pre>
+                            </li>
+                        }
+                    </ol>
+                }
+            </details>
+        </article>
+    }
+</div>
+
+@code {
+    private HubConnection? hubConnection;
+    private string SubjectFilter { get; set; } = string.Empty;
+    private string ChapterFilter { get; set; } = string.Empty;
+    private string? StatusMessage { get; set; }
+    private List<DocumentItem> Documents { get; } = [];
+
+    private IEnumerable<DocumentItem> FilteredDocuments => Documents
+        .Where(document => string.IsNullOrWhiteSpace(SubjectFilter) || string.Equals(document.Subject, SubjectFilter, StringComparison.OrdinalIgnoreCase))
+        .Where(document => string.IsNullOrWhiteSpace(ChapterFilter) || string.Equals(document.Chapter, ChapterFilter, StringComparison.OrdinalIgnoreCase));
+
+    private IReadOnlyList<string> SubjectOptions => Documents
+        .Select(document => document.Subject)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value)
+        .ToList();
+
+    private IReadOnlyList<string> ChapterOptions => Documents
+        .Select(document => document.Chapter)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value)
+        .ToList();
+
+    private IReadOnlyList<SubjectChapterSummaryItem> SubjectChapterSummaries => Documents
+        .GroupBy(document => new { document.Subject, document.Chapter })
+        .Select(group => new SubjectChapterSummaryItem(group.Key.Subject, group.Key.Chapter, group.Count()))
+        .OrderBy(summary => summary.Subject)
+        .ThenBy(summary => summary.Chapter)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDocumentsAsync();
+        await ConnectAsync();
+    }
+
+    private async Task LoadDocumentsAsync()
+    {
+        var documents = await KnowledgeBase.GetDocumentsAsync();
+        var chunks = await KnowledgeBase.GetChunksByDocumentAsync(documents.Select(document => document.Id));
+        Documents.Clear();
+        Documents.AddRange(documents.Select(document => ToDocumentItem(document, chunks)));
+    }
+
+    private async Task ConnectAsync()
+    {
+        var hubUri = Navigation.ToAbsoluteUri("/chatHub");
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(hubUri, options =>
+            {
+                options.Headers.Add(InternalSignalRToken.HeaderName, InternalToken.Value);
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<DocumentUploadedPayload>("ReceiveDocumentUploaded", payload =>
+        {
+            if (Documents.All(document => document.Id != payload.Id))
+            {
+                Documents.Insert(0, ToDocumentItem(payload));
+                StatusMessage = $"Tai lieu moi da duoc upload: {payload.Title}";
+            }
+
+            return InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    private void ClearFilters()
+    {
+        SubjectFilter = string.Empty;
+        ChapterFilter = string.Empty;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private static DocumentItem ToDocumentItem(
+        KnowledgeDocument document,
+        IReadOnlyDictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>> chunks)
+    {
+        return new DocumentItem(
+            document.Id,
+            document.Title,
+            document.FileName,
+            document.Department,
+            document.Subject,
+            document.Chapter,
+            document.Teacher,
+            document.UploadedBy,
+            document.Content,
+            document.UploadedAt.ToString("dd/MM HH:mm"),
+            document.HasOriginalFile,
+            $"/Chatbot?handler=DownloadDocument&id={document.Id}",
+            chunks.TryGetValue(document.Id, out var documentChunks) ? documentChunks : [],
+            false);
+    }
+
+    private static DocumentItem ToDocumentItem(DocumentUploadedPayload payload)
+    {
+        return new DocumentItem(
+            payload.Id,
+            payload.Title,
+            payload.FileName,
+            payload.Department,
+            payload.Subject,
+            payload.Chapter,
+            payload.Teacher,
+            payload.UploadedBy,
+            payload.Content,
+            payload.UploadedAt,
+            payload.HasOriginalFile,
+            payload.DownloadUrl,
+            [],
+            true);
+    }
+
+    private sealed record DocumentItem(
+        Guid Id,
+        string Title,
+        string FileName,
+        string Department,
+        string Subject,
+        string Chapter,
+        string Teacher,
+        string UploadedBy,
+        string Content,
+        string UploadedAt,
+        bool HasOriginalFile,
+        string DownloadUrl,
+        IReadOnlyList<KnowledgeDocumentChunk> Chunks,
+        bool IsNew);
+
+    private sealed record SubjectChapterSummaryItem(string Subject, string Chapter, int DocumentCount);
+}

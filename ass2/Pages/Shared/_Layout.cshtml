@@ -26,9 +26,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Smart Study Buddy</title>
-    <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/ass2.styles.css" asp-append-version="true" />
 </head>
@@ -44,11 +42,7 @@
                 {
                     <a class="navbar-brand" asp-area="" asp-page="/Index">&#127891; Smart Study Buddy</a>
                 }
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="mainNavbar">
+                <div class="navbar-collapse app-navbar-static" id="mainNavbar">
                     @if (!isAuthenticated)
                     {
                         <ul class="navbar-nav mx-auto">
@@ -66,7 +60,6 @@
                     else
                     {
                         <div class="app-nav-status mx-auto">
-                            <i class="bi bi-shield-check"></i>
                             <span>@workspaceLabel</span>
                         </div>
                     }
@@ -74,41 +67,25 @@
                     <div class="auth-nav">
                         @if (isAuthenticated)
                         {
-                            <div class="dropdown account-menu">
-                                <button class="avatar-button dropdown-toggle" type="button" id="accountMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                            <div class="account-menu account-menu-static">
+                                <div class="avatar-button">
                                     <span class="avatar-circle">@initials</span>
                                     <span class="avatar-meta">
                                         <strong>@displayName</strong>
                                         <small>@currentRole</small>
                                     </span>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end account-dropdown" aria-labelledby="accountMenuButton">
-                                    <li class="dropdown-header">
-                                        <strong>@displayName</strong>
-                                        <span>@currentRole</span>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" asp-page="/Chatbot">
-                                            <i class="bi bi-person-workspace"></i>
-                                            @workspaceLabel
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" asp-page="/Chatbot">
-                                            <i class="bi bi-chat-dots"></i>
-                                            Chatbot AI
-                                        </a>
-                                    </li>
-                                    <li><hr class="dropdown-divider" /></li>
-                                    <li>
-                                        <form method="post" asp-page="/Logout" class="dropdown-logout-form">
-                                            <button type="submit" class="dropdown-item logout-item">
-                                                <i class="bi bi-box-arrow-right"></i>
-                                                &#272;&#259;ng xu&#7845;t
-                                            </button>
-                                        </form>
-                                    </li>
-                                </ul>
+                                </div>
+                                <a class="account-link" asp-page="/Chatbot">
+                                    Chatbot AI
+                                </a>
+                                <a class="account-link" asp-page="/BlazorChat">
+                                    Blazor SignalR
+                                </a>
+                                <form method="post" asp-page="/Logout" class="dropdown-logout-form">
+                                    <button type="submit" class="account-link logout-item">
+                                        &#272;&#259;ng xu&#7845;t
+                                    </button>
+                                </form>
                             </div>
                         }
                         else
@@ -137,10 +114,5 @@
         </footer>
     }
 
-    <script src="~/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
-
-    @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

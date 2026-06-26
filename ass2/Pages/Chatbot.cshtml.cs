@@ -1,4 +1,4 @@
-﻿using ass2.Hubs;
+using ass2.Hubs;
 using BLL.Models;
 using BLL.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -13,8 +13,8 @@ namespace ass2.Pages;
 public class ChatbotModel(
     KnowledgeBaseService knowledgeBase,
     BenchmarkService benchmarkService,
-    IHubContext<ChatHub> hubContext,
-    DemoAuthService authService) : PageModel
+    DemoAuthService authService,
+    IHubContext<ChatHub> chatHub) : PageModel
 {
     public IReadOnlyList<KnowledgeDocument> Documents { get; private set; } = [];
     public IReadOnlyDictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>> DocumentChunks { get; private set; } = new Dictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>>();
@@ -35,7 +35,11 @@ public class ChatbotModel(
     public bool CanSeeUploadTab => CurrentRole == "Admin" || (CurrentRole == "Teacher" && authService.GetTeacherSubjects(CurrentUsername).Count > 0);
     public string? StatusMessage { get; private set; }
     public string? ErrorMessage { get; private set; }
-    public string ActiveTab { get; private set; } = "chatTab";
+    [BindProperty(SupportsGet = true)]
+    public string ActiveTab { get; set; } = "chatTab";
+
+    [BindProperty]
+    public string Question { get; set; } = string.Empty;
 
     [BindProperty]
     public IFormFile? UploadFile { get; set; }
@@ -81,6 +85,7 @@ public class ChatbotModel(
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        ActiveTab = NormalizeTab(ActiveTab);
         await LoadPageDataAsync(cancellationToken);
     }
 
@@ -97,6 +102,24 @@ public class ChatbotModel(
         BenchmarkResults = await benchmarkService.RunAsync(cancellationToken);
         ActiveTab = "benchmarkTab";
         StatusMessage = "Da chay benchmark tren tap tai lieu hien tai.";
+        await LoadPageDataAsync(cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostAskAsync(CancellationToken cancellationToken)
+    {
+        ActiveTab = "chatTab";
+        await LoadPageDataAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(Question))
+        {
+            ErrorMessage = "Hay nhap cau hoi truoc khi gui.";
+            return Page();
+        }
+
+        await knowledgeBase.AskAsync(SessionId, Question.Trim(), cancellationToken);
+        Question = string.Empty;
+        ModelState.Clear();
         await LoadPageDataAsync(cancellationToken);
         return Page();
     }
@@ -129,33 +152,12 @@ public class ChatbotModel(
             ManualContent,
             cancellationToken);
 
+        await chatHub.Clients.All.SendAsync(
+            "ReceiveDocumentUploaded",
+            ToDocumentUploadedPayload(document),
+            cancellationToken);
+
         StatusMessage = $"Da upload va index tai lieu: {document.Title}.";
-        var chunksByDocument = await knowledgeBase.GetChunksByDocumentAsync([document.Id], cancellationToken);
-        IReadOnlyList<KnowledgeDocumentChunk> uploadedChunks = chunksByDocument.TryGetValue(document.Id, out var documentChunks)
-            ? documentChunks
-            : [];
-
-        await hubContext.Clients.All.SendAsync("DocumentUploaded", new
-        {
-            document.Id,
-            document.Title,
-            document.Department,
-            document.Subject,
-            document.Chapter,
-            document.Teacher,
-            document.FileName,
-            document.UploadedBy,
-            document.Content,
-            document.HasOriginalFile,
-            Chunks = uploadedChunks.Select(chunk => new
-            {
-                chunk.ChunkIndex,
-                chunk.Content,
-                CreatedAt = chunk.CreatedAt.ToString("HH:mm:ss")
-            }),
-            UploadedAt = document.UploadedAt.ToString("HH:mm:ss")
-        }, cancellationToken);
-
         ModelState.Clear();
         Title = string.Empty;
         ManualContent = string.Empty;
@@ -178,10 +180,6 @@ public class ChatbotModel(
         if (authService.CreateSubject(NewSubject))
         {
             StatusMessage = $"Da tao mon hoc {NewSubject.Trim()}.";
-            await hubContext.Clients.All.SendAsync("SubjectsChanged", new
-            {
-                Subject = NewSubject.Trim()
-            }, cancellationToken);
         }
         else
         {
@@ -213,7 +211,6 @@ public class ChatbotModel(
             StatusMessage = string.IsNullOrWhiteSpace(AssignSubject)
                 ? $"Da bo gan mon cho giao vien {AssignTeacherUsername}."
                 : $"Da gan mon {AssignSubject} cho giao vien {AssignTeacherUsername}.";
-            await NotifyAccountChangedAsync(AssignTeacherUsername, cancellationToken);
         }
         else
         {
@@ -249,7 +246,6 @@ public class ChatbotModel(
             else
             {
                 StatusMessage = $"Da cap nhat role cho tai khoan {RoleUsername}.";
-                await NotifyAccountChangedAsync(RoleUsername, cancellationToken);
             }
         }
         else
@@ -405,17 +401,28 @@ public class ChatbotModel(
             : [];
     }
 
-    private async Task NotifyAccountChangedAsync(string username, CancellationToken cancellationToken)
+    private static string NormalizeTab(string? tab)
     {
-        var user = authService.GetUser(username);
-        await hubContext.Clients.Group(ChatHub.UserGroup(username)).SendAsync("AccountUpdated", new
-        {
-            Username = username,
-            Role = user?.Role,
-            Department = user?.ManagedDepartment,
-            IsDepartmentHead = user?.IsDepartmentHead,
-            Subjects = authService.GetTeacherSubjects(username)
-        }, cancellationToken);
+        return tab is "chatTab" or "documentsTab" or "uploadTab" or "adminTab" or "subjectsTab" or "benchmarkTab"
+            ? tab
+            : "chatTab";
+    }
+
+    private static DocumentUploadedPayload ToDocumentUploadedPayload(KnowledgeDocument document)
+    {
+        return new DocumentUploadedPayload(
+            document.Id,
+            document.Title,
+            document.FileName,
+            document.Department,
+            document.Subject,
+            document.Chapter,
+            document.Teacher,
+            document.UploadedBy,
+            document.Content,
+            document.UploadedAt.ToString("dd/MM HH:mm"),
+            document.HasOriginalFile,
+            $"/Chatbot?handler=DownloadDocument&id={document.Id}");
     }
 }
 

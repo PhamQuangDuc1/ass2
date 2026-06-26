@@ -1,4 +1,5 @@
 ﻿@page
+@using ass2.Components
 @model ChatbotModel
 @{
     ViewData["Title"] = "Chatbot";
@@ -29,46 +30,25 @@
     }
 
     <nav class="feature-tabs" aria-label="Chuc nang">
-        <button type="button" class="tab-button active" data-tab-target="chatTab">Chat</button>
-        <button type="button" class="tab-button" data-tab-target="documentsTab">Tai lieu</button>
+        <a class="tab-button @(Model.ActiveTab == "chatTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="chatTab">Chat</a>
+        <a class="tab-button @(Model.ActiveTab == "documentsTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="documentsTab">Tai lieu</a>
         @if (Model.CanSeeUploadTab)
         {
-            <button type="button" class="tab-button" data-tab-target="uploadTab">Upload</button>
+            <a class="tab-button @(Model.ActiveTab == "uploadTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="uploadTab">Upload</a>
         }
         @if (Model.CurrentRole == "Admin")
         {
-            <button type="button" class="tab-button" data-tab-target="adminTab">Admin</button>
-            <button type="button" class="tab-button" data-tab-target="subjectsTab">Mon hoc</button>
+            <a class="tab-button @(Model.ActiveTab == "adminTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="adminTab">Admin</a>
+            <a class="tab-button @(Model.ActiveTab == "subjectsTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="subjectsTab">Mon hoc</a>
         }
-        <button type="button" class="tab-button" data-tab-target="benchmarkTab">Benchmark</button>
+        <a class="tab-button @(Model.ActiveTab == "benchmarkTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="benchmarkTab">Benchmark</a>
     </nav>
 
-    <section class="tab-panel active" id="chatTab">
-        <div class="tab-heading">
-            <div>
-                <p class="eyebrow">Chat & Hoi dap</p>
-                <h2>Hoi theo ngu canh tai lieu</h2>
-            </div>
-            <div class="tab-actions">
-                <span class="live-pill" id="liveStatus">Connecting</span>
-                <span class="session-chip">Session @Model.SessionId[..8]</span>
-            </div>
-        </div>
-
-        <section class="chat-stream" id="chatStream" aria-live="polite">
-            <article class="message message-bot">
-                <strong>Bot</strong>
-                <p>Nhập câu hỏi về tài liệu môn học. Câu trả lời sẽ dựa trên kho tài liệu đã index và kèm nguồn tham khảo.</p>
-            </article>
-        </section>
-
-        <form class="chat-input" id="chatForm">
-            <input id="questionInput" autocomplete="off" placeholder="VD: RAG là gì và dùng để học hiệu quả hơn như thế nào?" />
-            <button type="submit">Gửi</button>
-        </form>
+    <section class="tab-panel @(Model.ActiveTab == "chatTab" ? "active" : "")" id="chatTab" hidden="@(Model.ActiveTab != "chatTab")">
+        <component type="typeof(BlazorSignalRChat)" render-mode="ServerPrerendered" param-ShowHeader="false" />
     </section>
 
-    <section class="tab-panel" id="documentsTab" hidden>
+    <section class="tab-panel @(Model.ActiveTab == "documentsTab" ? "active" : "")" id="documentsTab" hidden="@(Model.ActiveTab != "documentsTab")">
         <div class="tab-heading">
             <div>
                 <p class="eyebrow">Quan ly tai lieu</p>
@@ -77,96 +57,12 @@
             <span class="session-chip"><span id="visibleDocumentCount">@Model.Documents.Count</span>/<span id="totalDocumentCount">@Model.Documents.Count</span> tai lieu</span>
         </div>
 
-        <div class="document-management">
-            <div class="document-filters" aria-label="Loc tai lieu">
-                <div class="form-row">
-                    <label for="subjectFilter">Mon hoc</label>
-                    <select id="subjectFilter">
-                        <option value="">Tat ca mon hoc</option>
-                        @foreach (var subject in Model.SubjectOptions)
-                        {
-                            <option value="@subject">@subject</option>
-                        }
-                    </select>
-                </div>
-                <div class="form-row">
-                    <label for="chapterFilter">Chuong</label>
-                    <select id="chapterFilter">
-                        <option value="">Tat ca chuong</option>
-                        @foreach (var chapter in Model.ChapterOptions)
-                        {
-                            <option value="@chapter">@chapter</option>
-                        }
-                    </select>
-                </div>
-                <button type="button" class="secondary-action" id="clearDocumentFilters">Xoa loc</button>
-            </div>
-
-            <div class="subject-chapter-summary" aria-label="Thong ke theo mon hoc va chuong">
-                @foreach (var summary in Model.SubjectChapterSummaries)
-                {
-                    <span data-summary-subject="@summary.Subject" data-summary-chapter="@summary.Chapter">
-                        @summary.Subject / @summary.Chapter: @summary.DocumentCount
-                    </span>
-                }
-            </div>
-        </div>
-
-        <div class="document-list document-list-wide" id="documentList">
-            @foreach (var document in Model.Documents)
-            {
-                <article class="document-item" data-subject="@document.Subject" data-chapter="@document.Chapter">
-                    <div class="document-header">
-                        <strong>@document.Title</strong>
-                        <span class="department-badge">Bo mon: @document.Department</span>
-                    </div>
-                    <div class="document-meta">
-                        <span>Mon: @document.Subject</span>
-                        <span>Chuong: @document.Chapter</span>
-                        <span>GV: @document.Teacher</span>
-                    </div>
-                    <small>@document.FileName | Upload: @document.UploadedBy | @document.UploadedAt.ToString("dd/MM HH:mm")</small>
-                    @if (document.HasOriginalFile)
-                    {
-                        <a class="secondary-action" asp-page-handler="DownloadDocument" asp-route-id="@document.Id">Tai file goc</a>
-                    }
-                    <details class="document-viewer">
-                        <summary>Xem tai lieu</summary>
-                        <pre>@document.Content</pre>
-                    </details>
-                    @{
-                        var chunks = Model.GetDocumentChunks(document.Id);
-                    }
-                    <details class="document-viewer chunk-viewer">
-                        <summary>Xem chunks da index (@chunks.Count)</summary>
-                        @if (chunks.Count == 0)
-                        {
-                            <p class="empty-chunks">Chua co chunks cho tai lieu nay.</p>
-                        }
-                        else
-                        {
-                            <ol class="chunk-list">
-                                @foreach (var chunk in chunks)
-                                {
-                                    <li>
-                                        <div class="chunk-heading">
-                                            <strong>Chunk @(chunk.ChunkIndex + 1)</strong>
-                                            <span>@chunk.Content.Length ky tu</span>
-                                        </div>
-                                        <pre>@chunk.Content</pre>
-                                    </li>
-                                }
-                            </ol>
-                        }
-                    </details>
-                </article>
-            }
-        </div>
+        <component type="typeof(RealtimeDocuments)" render-mode="ServerPrerendered" />
     </section>
 
     @if (Model.CanSeeUploadTab)
     {
-        <section class="tab-panel" id="uploadTab" hidden>
+        <section class="tab-panel @(Model.ActiveTab == "uploadTab" ? "active" : "")" id="uploadTab" hidden="@(Model.ActiveTab != "uploadTab")">
             <div class="tab-heading">
                 <div>
                     <p class="eyebrow">Upload & Index</p>
@@ -211,7 +107,7 @@
 
                 <div class="form-row">
                     <label asp-for="Title">Ten tai lieu</label>
-                    <input asp-for="Title" placeholder="VD: Slide SignalR Chapter 2" />
+                    <input asp-for="Title" placeholder="VD: Slide Razor Pages Chapter 2" />
                 </div>
 
                 <div class="form-row">
@@ -231,7 +127,7 @@
 
     @if (Model.CurrentRole == "Admin")
     {
-        <section class="tab-panel" id="adminTab" hidden>
+        <section class="tab-panel @(Model.ActiveTab == "adminTab" ? "active" : "")" id="adminTab" hidden="@(Model.ActiveTab != "adminTab")">
             <div class="tab-heading">
                 <div>
                     <p class="eyebrow">Admin</p>
@@ -284,7 +180,7 @@
             </div>
         </section>
 
-        <section class="tab-panel" id="subjectsTab" hidden>
+        <section class="tab-panel @(Model.ActiveTab == "subjectsTab" ? "active" : "")" id="subjectsTab" hidden="@(Model.ActiveTab != "subjectsTab")">
             <div class="tab-heading">
                 <div>
                     <p class="eyebrow">Mon hoc</p>
@@ -312,7 +208,7 @@
         </section>
     }
 
-    <section class="tab-panel" id="benchmarkTab" hidden>
+    <section class="tab-panel @(Model.ActiveTab == "benchmarkTab" ? "active" : "")" id="benchmarkTab" hidden="@(Model.ActiveTab != "benchmarkTab")">
         <div class="tab-heading">
             <div>
                 <p class="eyebrow">RAG benchmark</p>
@@ -374,15 +270,4 @@
     </section>
 </section>
 
-@section Scripts {
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-    <script>
-        window.ass2Chat = {
-            sessionId: '@Model.SessionId',
-            activeTab: '@Model.ActiveTab',
-            initialHistory: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.InitialHistory, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)))
-        };
-    </script>
-    <script src="~/js/chat.js" asp-append-version="true"></script>
-}
-
+<script src="_framework/blazor.server.js"></script>

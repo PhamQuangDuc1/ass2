@@ -1,0 +1,6 @@
+﻿đảm bảo cấu trúc 3 lớp.
+Lớp UI (Razor Pages) KHÔNG ĐƯỢC PHÉP chạm trực tiếp vào Data Access (Repository/DbContext)
+Lớp Business chỉ được gọi DataAccess, KHÔNG ĐƯỢC phụ thuộc ngược lại UI
+Lớp DataAccess độc lập, KHÔNG ĐƯỢC BIẾT về Business hay UI
+
+chỉ có C# không cho code java trong project
