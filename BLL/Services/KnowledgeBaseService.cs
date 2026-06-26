@@ -662,6 +662,23 @@ public sealed class KnowledgeBaseService(
 
             IF COL_LENGTH(N'[dbo].[SourceMatches]', N'HasOriginalFile') IS NULL
                 ALTER TABLE [dbo].[SourceMatches] ADD [HasOriginalFile] bit NOT NULL CONSTRAINT [DF_SourceMatches_HasOriginalFile] DEFAULT 0;
+
+            IF OBJECT_ID(N'[dbo].[Subjects]', N'U') IS NOT NULL
+            BEGIN
+                UPDATE document
+                SET [Department] = subject.[Department]
+                FROM [dbo].[Documents] document
+                INNER JOIN [dbo].[Subjects] subject ON subject.[Name] = document.[Subject]
+                WHERE subject.[Department] <> N''
+                  AND (document.[Department] = N'' OR document.[Department] = document.[Subject]);
+
+                UPDATE chunk
+                SET [Department] = subject.[Department]
+                FROM [dbo].[DocumentChunks] chunk
+                INNER JOIN [dbo].[Subjects] subject ON subject.[Name] = chunk.[Subject]
+                WHERE subject.[Department] <> N''
+                  AND (chunk.[Department] = N'' OR chunk.[Department] = chunk.[Subject]);
+            END
             """,
             cancellationToken);
     }

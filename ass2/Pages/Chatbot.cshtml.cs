@@ -21,7 +21,10 @@ public class ChatbotModel(
     public IReadOnlyList<ChatTurn> InitialHistory { get; private set; } = [];
     public IReadOnlyList<DemoUser> Users { get; private set; } = [];
     public IReadOnlyList<string> UploadSubjectOptions { get; private set; } = [];
+    public IReadOnlyList<string> VisibleSubjectOptions { get; private set; } = [];
     public IReadOnlyList<string> SubjectOptions { get; private set; } = [];
+    public IReadOnlyList<string> DepartmentOptions { get; private set; } = [];
+    public IReadOnlyList<SubjectInfo> SubjectCatalog { get; private set; } = [];
     public IReadOnlyList<string> ChapterOptions { get; private set; } = [];
     public IReadOnlyList<SubjectChapterSummary> SubjectChapterSummaries { get; private set; } = [];
     public IReadOnlyDictionary<string, int> SubjectCounts { get; private set; } = new Dictionary<string, int>();
@@ -32,7 +35,7 @@ public class ChatbotModel(
     public string CurrentRole { get; private set; } = string.Empty;
     public bool CurrentUserIsDepartmentHead { get; private set; }
     public string CurrentManagedDepartment { get; private set; } = string.Empty;
-    public bool CanSeeUploadTab => CurrentRole == "Admin" || (CurrentRole == "Teacher" && authService.GetTeacherSubjects(CurrentUsername).Count > 0);
+    public bool CanSeeUploadTab => CurrentRole == "Teacher" && CurrentUserIsDepartmentHead;
     public string? StatusMessage { get; private set; }
     public string? ErrorMessage { get; private set; }
     [BindProperty(SupportsGet = true)]
@@ -78,10 +81,16 @@ public class ChatbotModel(
     public string NewSubject { get; set; } = string.Empty;
 
     [BindProperty]
+    public string NewDepartment { get; set; } = string.Empty;
+
+    [BindProperty]
     public string AssignTeacherUsername { get; set; } = string.Empty;
 
     [BindProperty]
     public string AssignSubject { get; set; } = string.Empty;
+
+    [BindProperty]
+    public List<string> AssignSubjects { get; set; } = [];
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -139,8 +148,6 @@ public class ChatbotModel(
             Title = UploadFile?.FileName ?? "Tai lieu moi";
         }
 
-        Department = Subject;
-
         var document = await knowledgeBase.AddDocumentAsync(
             UploadFile,
             Title,
@@ -177,13 +184,13 @@ public class ChatbotModel(
             return Page();
         }
 
-        if (authService.CreateSubject(NewSubject))
+        if (authService.CreateSubject(NewSubject, NewDepartment))
         {
-            StatusMessage = $"Da tao mon hoc {NewSubject.Trim()}.";
+            StatusMessage = $"Da tao mon hoc {NewSubject.Trim()} trong bo mon {NewDepartment.Trim()}.";
         }
         else
         {
-            ErrorMessage = "Khong tao duoc mon hoc. Ten mon co the dang trong hoac da ton tai.";
+            ErrorMessage = "Khong tao duoc mon hoc. Ten mon/bo mon co the dang trong hoac mon da ton tai.";
         }
 
         ActiveTab = "subjectsTab";
@@ -202,11 +209,7 @@ public class ChatbotModel(
             return Page();
         }
 
-        if (authService.IsSubjectAssignedToOtherTeacher(AssignTeacherUsername, AssignSubject))
-        {
-            ErrorMessage = $"Mon {AssignSubject.Trim()} da co giao vien phu trach: {GetSubjectOwnerLabel(AssignSubject)}. Khong the gan trung.";
-        }
-        else if (authService.AssignTeacherSubject(AssignTeacherUsername, AssignSubject))
+        if (authService.AssignTeacherSubject(AssignTeacherUsername, AssignSubject))
         {
             StatusMessage = string.IsNullOrWhiteSpace(AssignSubject)
                 ? $"Da bo gan mon cho giao vien {AssignTeacherUsername}."
@@ -233,13 +236,22 @@ public class ChatbotModel(
             return Page();
         }
 
-        if (Role == "Teacher" && authService.IsSubjectAssignedToOtherTeacher(RoleUsername, AssignSubject))
+        var existingDepartmentHead = IsDepartmentHead
+            ? authService.GetDepartmentHead(ManagedDepartment)
+            : null;
+
+        if (IsDepartmentHead && string.IsNullOrWhiteSpace(ManagedDepartment))
         {
-            ErrorMessage = $"Mon {AssignSubject.Trim()} da co giao vien phu trach: {GetSubjectOwnerLabel(AssignSubject)}. Khong the gan trung.";
+            ErrorMessage = "Hay chon bo mon khi set truong bo mon.";
         }
-        else if (authService.UpdateUserRole(RoleUsername, Role, false, ""))
+        else if (!string.IsNullOrWhiteSpace(existingDepartmentHead)
+            && !string.Equals(existingDepartmentHead, RoleUsername, StringComparison.OrdinalIgnoreCase))
         {
-            if (Role == "Teacher" && !authService.AssignTeacherSubject(RoleUsername, AssignSubject))
+            ErrorMessage = $"Bo mon {ManagedDepartment.Trim()} da co truong bo mon: {GetUserLabel(existingDepartmentHead)}.";
+        }
+        else if (authService.UpdateUserRole(RoleUsername, Role, IsDepartmentHead, ManagedDepartment))
+        {
+            if (Role == "Teacher" && !authService.AssignTeacherSubjects(RoleUsername, AssignSubjects))
             {
                 ErrorMessage = "Da cap nhat role nhung khong gan duoc mon. Hay kiem tra tai khoan giao vien va mon hoc.";
             }
@@ -262,20 +274,17 @@ public class ChatbotModel(
     {
         LoadCurrentUser();
 
-        var subject = Subject.Trim();
-        var owner = authService.GetSubjectOwner(subject);
-
-        if (CurrentRole == "Admin")
-        {
-            return string.IsNullOrWhiteSpace(owner);
-        }
-
-        if (CurrentRole != "Teacher")
+        if (CurrentRole != "Teacher" || !CurrentUserIsDepartmentHead)
         {
             return false;
         }
 
-        return string.Equals(owner, CurrentUsername, StringComparison.OrdinalIgnoreCase);
+        var department = Department.Trim();
+        var subjectDepartment = authService.GetSubjectDepartment(Subject);
+
+        return !string.IsNullOrWhiteSpace(department)
+            && string.Equals(department, CurrentManagedDepartment, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(subjectDepartment, department, StringComparison.OrdinalIgnoreCase);
     }
 
     private string BuildPermissionMessage()
@@ -285,43 +294,42 @@ public class ChatbotModel(
             return "Hoc sinh chi duoc chat va xem tai lieu, khong duoc upload.";
         }
 
-        if (CurrentRole == "Admin")
-        {
-            var owner = authService.GetSubjectOwner(Subject);
-            return string.IsNullOrWhiteSpace(owner)
-                ? "Admin chi upload duoc mon chua gan cho giao vien phu trach."
-                : $"Mon {Subject.Trim()} da duoc gan cho {GetSubjectOwnerLabel(Subject)}. Chi giao vien phu trach moi duoc upload.";
-        }
-
         if (CurrentRole == "Teacher")
         {
-            var subjects = authService.GetTeacherSubjects(CurrentUsername);
-            if (subjects.Count == 0)
+            if (!CurrentUserIsDepartmentHead)
             {
-                return "Ban chua duoc Admin gan mon hoc de upload.";
+                return "Chi truong bo mon moi duoc upload tai lieu.";
             }
 
-            return $"Ban chi duoc upload tai lieu cua mon: {string.Join(", ", subjects)}.";
+            return $"Ban chi duoc upload tai lieu thuoc bo mon {CurrentManagedDepartment}.";
         }
 
-        return "Vai tro hien tai khong co quyen upload tai lieu.";
+        return "Chi truong bo mon moi co quyen upload tai lieu.";
     }
 
     private async Task LoadPageDataAsync(CancellationToken cancellationToken)
     {
         LoadCurrentUser();
-        if (CurrentRole == "Teacher" && !HttpContext.Request.HasFormContentType)
+        if (CurrentRole == "Teacher" && CurrentUserIsDepartmentHead && !HttpContext.Request.HasFormContentType)
         {
-            var firstSubject = authService.GetTeacherSubjects(CurrentUsername).FirstOrDefault();
+            Department = CurrentManagedDepartment;
+            var firstSubject = authService.GetSubjectsByDepartment(CurrentManagedDepartment).FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(firstSubject))
             {
                 Subject = firstSubject;
-                Department = firstSubject;
             }
         }
 
         Documents = await knowledgeBase.GetDocumentsAsync(cancellationToken);
         DocumentChunks = await knowledgeBase.GetChunksByDocumentAsync(Documents.Select(document => document.Id), cancellationToken);
+        SubjectCatalog = authService.SubjectCatalog;
+        DepartmentOptions = Documents
+            .Select(document => document.Department)
+            .Concat(authService.Departments)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value)
+            .ToList();
         SubjectOptions = Documents
             .Select(document => document.Subject)
             .Concat(authService.Subjects)
@@ -329,9 +337,14 @@ public class ChatbotModel(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(value => value)
             .ToList();
-        UploadSubjectOptions = CurrentRole == "Admin"
-            ? authService.GetUnassignedSubjects(SubjectOptions)
-            : authService.GetTeacherSubjects(CurrentUsername);
+        UploadSubjectOptions = CurrentRole == "Teacher" && CurrentUserIsDepartmentHead
+            ? authService.GetSubjectsByDepartment(CurrentManagedDepartment)
+            : [];
+        VisibleSubjectOptions = CurrentRole == "Teacher"
+            ? CurrentUserIsDepartmentHead
+                ? authService.GetSubjectsByDepartment(CurrentManagedDepartment)
+                : authService.GetTeacherSubjects(CurrentUsername)
+            : [];
         ChapterOptions = Documents
             .Select(document => document.Chapter)
             .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -377,21 +390,29 @@ public class ChatbotModel(
 
     public bool CanAssignSubjectToTeacher(string username, string subject)
     {
-        return !authService.IsSubjectAssignedToOtherTeacher(username, subject);
+        return true;
     }
 
     public string GetSubjectOwnerLabel(string subject)
     {
-        var ownerUsername = authService.GetSubjectOwner(subject);
-        if (string.IsNullOrWhiteSpace(ownerUsername))
+        var ownerUsernames = authService.GetSubjectOwners(subject);
+        if (ownerUsernames.Count == 0)
         {
             return "Chua co giao vien";
         }
 
-        var owner = authService.GetUser(ownerUsername);
-        return owner is null
-            ? ownerUsername
-            : $"{owner.DisplayName} ({owner.Username})";
+        return string.Join(", ", ownerUsernames.Select(ownerUsername =>
+        {
+            return GetUserLabel(ownerUsername);
+        }));
+    }
+
+    public string GetUserLabel(string username)
+    {
+        var user = authService.GetUser(username);
+        return user is null
+            ? username
+            : $"{user.DisplayName} ({user.Username})";
     }
 
     public IReadOnlyList<KnowledgeDocumentChunk> GetDocumentChunks(Guid documentId)

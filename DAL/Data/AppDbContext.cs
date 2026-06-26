@@ -82,15 +82,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("Subjects");
             entity.HasKey(subject => subject.Name);
             entity.Property(subject => subject.Name).HasMaxLength(120);
+            entity.Property(subject => subject.Department).HasMaxLength(120);
         });
 
         modelBuilder.Entity<TeacherSubjectEntity>(entity =>
         {
             entity.ToTable("TeacherSubjects");
-            entity.HasKey(assignment => assignment.Subject);
+            entity.HasKey(assignment => new { assignment.Username, assignment.Subject });
             entity.Property(assignment => assignment.Username).HasMaxLength(120);
             entity.Property(assignment => assignment.Subject).HasMaxLength(120);
+            entity.Property(assignment => assignment.Department).HasMaxLength(120);
             entity.HasIndex(assignment => assignment.Username);
+            entity.HasIndex(assignment => assignment.Subject);
             entity.HasOne<UserEntity>()
                 .WithMany()
                 .HasForeignKey(assignment => assignment.Username)
@@ -176,6 +179,7 @@ public sealed class UserEntity
 public sealed class SubjectEntity
 {
     public string Name { get; set; } = string.Empty;
+    public string Department { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
 }
 
@@ -183,5 +187,6 @@ public sealed class TeacherSubjectEntity
 {
     public string Username { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
+    public string Department { get; set; } = string.Empty;
     public DateTimeOffset AssignedAt { get; set; }
 }

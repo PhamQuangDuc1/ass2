@@ -9,6 +9,11 @@
 @inject NavigationManager Navigation
 @inject InternalSignalRToken InternalToken
 
+@code {
+    [Parameter]
+    public IReadOnlyList<string> AllowedSubjects { get; set; } = [];
+}
+
 <div class="document-management">
     <div class="document-filters" aria-label="Loc tai lieu">
         <div class="form-row">
@@ -136,6 +141,14 @@
     private async Task LoadDocumentsAsync()
     {
         var documents = await KnowledgeBase.GetDocumentsAsync();
+        if (AllowedSubjects.Count > 0)
+        {
+            var allowedSubjects = AllowedSubjects.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            documents = documents
+                .Where(document => allowedSubjects.Contains(document.Subject))
+                .ToList();
+        }
+
         var chunks = await KnowledgeBase.GetChunksByDocumentAsync(documents.Select(document => document.Id));
         Documents.Clear();
         Documents.AddRange(documents.Select(document => ToDocumentItem(document, chunks)));
@@ -154,7 +167,10 @@
 
         hubConnection.On<DocumentUploadedPayload>("ReceiveDocumentUploaded", payload =>
         {
-            if (Documents.All(document => document.Id != payload.Id))
+            var canSeeDocument = AllowedSubjects.Count == 0
+                || AllowedSubjects.Contains(payload.Subject, StringComparer.OrdinalIgnoreCase);
+
+            if (canSeeDocument && Documents.All(document => document.Id != payload.Id))
             {
                 Documents.Insert(0, ToDocumentItem(payload));
                 StatusMessage = $"Tai lieu moi da duoc upload: {payload.Title}";

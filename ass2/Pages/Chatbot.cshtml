@@ -15,6 +15,10 @@
             <strong>@Model.CurrentUserName</strong>
             <span>
                 @Model.CurrentRole
+                @if (Model.CurrentUserIsDepartmentHead)
+                {
+                    <text> - Truong bo mon @Model.CurrentManagedDepartment</text>
+                }
             </span>
         </div>
     </header>
@@ -57,7 +61,7 @@
             <span class="session-chip"><span id="visibleDocumentCount">@Model.Documents.Count</span>/<span id="totalDocumentCount">@Model.Documents.Count</span> tai lieu</span>
         </div>
 
-        <component type="typeof(RealtimeDocuments)" render-mode="ServerPrerendered" />
+        <component type="typeof(RealtimeDocuments)" render-mode="ServerPrerendered" param-AllowedSubjects="Model.VisibleSubjectOptions" />
     </section>
 
     @if (Model.CanSeeUploadTab)
@@ -73,19 +77,21 @@
             <div class="role-policy">
                 <strong>Quyen upload cua ban</strong>
                 <span>
-                    @if (Model.CurrentRole == "Admin")
-                    {
-                        <text>Admin quan ly phan cong mon hoc. Mon da gan cho giao vien thi chi giao vien do duoc upload; Admin chi upload mon chua phan cong.</text>
-                    }
-                    else
-                    {
-                        <text>Ban chi upload duoc mon da duoc Admin gan: @string.Join(", ", Model.UploadSubjectOptions).</text>
-                    }
+                    <text>Chi truong bo mon moi duoc upload. Ban dang quan ly bo mon @Model.CurrentManagedDepartment.</text>
                 </span>
             </div>
 
             <form class="upload-form upload-form-wide" method="post" enctype="multipart/form-data" asp-page-handler="Upload">
                 <div class="form-grid">
+                    <div class="form-row">
+                        <label asp-for="Department">Bo mon</label>
+                        <select asp-for="Department" disabled="@(Model.DepartmentOptions.Count == 0 ? "disabled" : null)">
+                            @foreach (var department in Model.DepartmentOptions.Where(department => string.Equals(department, Model.CurrentManagedDepartment, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                <option value="@department">@department</option>
+                            }
+                        </select>
+                    </div>
                     <div class="form-row">
                         <label asp-for="Subject">Mon hoc</label>
                         <select asp-for="Subject" disabled="@(Model.UploadSubjectOptions.Count == 0 ? "disabled" : null)">
@@ -146,6 +152,7 @@
                         </div>
                         <div class="document-meta">
                             <span>@user.DisplayName</span>
+                            <span>Bo mon quan ly: @(user.IsDepartmentHead ? user.ManagedDepartment : "Khong")</span>
                             <span>Mon duoc gan: @(Model.GetAssignedSubjects(user.Username).Count > 0 ? string.Join(", ", Model.GetAssignedSubjects(user.Username)) : "Chua co")</span>
                         </div>
                         <form method="post" asp-page-handler="UpdateRole" class="role-update-form">
@@ -159,16 +166,30 @@
                                 </select>
                             </div>
                             <div class="form-row">
-                                <label for="subject-@user.Username">Mon hoc quan ly</label>
-                                <select id="subject-@user.Username" name="AssignSubject">
-                                    <option value="">Chua gan mon</option>
-                                    @foreach (var subject in Model.SubjectOptions)
+                                <label for="head-@user.Username">Truong bo mon</label>
+                                <label class="check-row" for="head-@user.Username">
+                                    <input id="head-@user.Username" type="checkbox" name="IsDepartmentHead" value="true" checked="@user.IsDepartmentHead" />
+                                    Co quyen upload
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <label for="department-@user.Username">Bo mon quan ly</label>
+                                <select id="department-@user.Username" name="ManagedDepartment">
+                                    <option value="">Khong quan ly</option>
+                                    @foreach (var department in Model.DepartmentOptions)
                                     {
-                                        var assignedToThisTeacher = Model.GetAssignedSubjects(user.Username).Contains(subject, StringComparer.OrdinalIgnoreCase);
-                                        var canAssignSubject = Model.CanAssignSubjectToTeacher(user.Username, subject);
-                                        var ownerLabel = Model.GetSubjectOwnerLabel(subject);
-                                        <option value="@subject" selected="@assignedToThisTeacher" disabled="@(!canAssignSubject)">
-                                            @subject@(canAssignSubject ? "" : $" - Da co GV: {ownerLabel}")
+                                        <option value="@department" selected="@(string.Equals(user.ManagedDepartment, department, StringComparison.OrdinalIgnoreCase))">@department</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label for="subject-@user.Username">Mon hoc giang day</label>
+                                <select id="subject-@user.Username" name="AssignSubjects" multiple size="5">
+                                    @foreach (var subject in Model.SubjectCatalog)
+                                    {
+                                        var assignedToThisTeacher = Model.GetAssignedSubjects(user.Username).Contains(subject.Name, StringComparer.OrdinalIgnoreCase);
+                                        <option value="@subject.Name" selected="@assignedToThisTeacher">
+                                            @subject.Name (@subject.Department)
                                         </option>
                                     }
                                 </select>
@@ -192,6 +213,10 @@
             <div class="admin-tools">
                 <form method="post" asp-page-handler="CreateSubject" class="role-update-form">
                     <div class="form-row">
+                        <label asp-for="NewDepartment">Bo mon</label>
+                        <input asp-for="NewDepartment" placeholder="VD: PRN222" />
+                    </div>
+                    <div class="form-row">
                         <label asp-for="NewSubject">Mon hoc moi</label>
                         <input asp-for="NewSubject" placeholder="VD: Entity Framework" />
                     </div>
@@ -202,7 +227,7 @@
             <div class="subject-chapter-summary">
                 @foreach (var subject in Model.SubjectOptions)
                 {
-                    <span>@subject - @Model.GetSubjectOwnerLabel(subject)</span>
+                    <span>@subject (@Model.SubjectCatalog.FirstOrDefault(item => item.Name == subject)?.Department) - @Model.GetSubjectOwnerLabel(subject)</span>
                 }
             </div>
         </section>
