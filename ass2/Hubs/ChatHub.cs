@@ -12,13 +12,13 @@ public sealed class ChatHub(
     {
         if (!IsAllowedClient())
         {
-            throw new HubException("Ban can dang nhap de su dung chat realtime.");
+            throw new HubException("Bạn cần đăng nhập để sử dụng chatbot AI.");
         }
 
         question = question.Trim();
         if (string.IsNullOrWhiteSpace(question))
         {
-            await Clients.Caller.SendAsync("ReceiveChatError", "Hay nhap cau hoi truoc khi gui.");
+            await Clients.Caller.SendAsync("ReceiveChatError", "Hãy nhập câu hỏi trước khi gửi.");
             return;
         }
 
@@ -36,7 +36,7 @@ public sealed class ChatHub(
         }
         catch
         {
-            await Clients.Caller.SendAsync("ReceiveChatError", "Khong tao duoc cau tra loi luc nay. Hay thu lai sau.");
+            await Clients.Caller.SendAsync("ReceiveChatError", "Không tạo được câu trả lời lúc này. Hãy thử lại sau.");
         }
     }
 

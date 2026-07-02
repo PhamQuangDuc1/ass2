@@ -26,7 +26,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Smart Study Buddy</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/ass2.styles.css" asp-append-version="true" />
 </head>
@@ -36,11 +40,11 @@
             <div class="container">
                 @if (isAuthenticated)
                 {
-                    <a class="navbar-brand" asp-area="" asp-page="/Chatbot">&#127891; Smart Study Buddy</a>
+                    <a class="navbar-brand" asp-area="" asp-page="/Chatbot"><i class="bi bi-mortarboard-fill"></i> Smart Study Buddy</a>
                 }
                 else
                 {
-                    <a class="navbar-brand" asp-area="" asp-page="/Index">&#127891; Smart Study Buddy</a>
+                    <a class="navbar-brand" asp-area="" asp-page="/Index"><i class="bi bi-mortarboard-fill"></i> Smart Study Buddy</a>
                 }
                 <div class="navbar-collapse app-navbar-static" id="mainNavbar">
                     @if (!isAuthenticated)
@@ -108,7 +112,7 @@
     {
         <footer class="footer text-muted">
             <div class="container footer-inner">
-                <strong>&#127891; Smart Study Buddy</strong>
+                <strong>Smart Study Buddy</strong>
                 <span>Copyright 2026</span>
             </div>
         </footer>

@@ -85,6 +85,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(subject => subject.Name);
             entity.Property(subject => subject.Name).HasMaxLength(120);
             entity.Property(subject => subject.Department).HasMaxLength(120);
+            entity.Property(subject => subject.IsActive).HasDefaultValue(true);
         });
 
         modelBuilder.Entity<TeacherSubjectEntity>(entity =>
@@ -191,6 +192,7 @@ public sealed class SubjectEntity
 {
     public string Name { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
 }
 

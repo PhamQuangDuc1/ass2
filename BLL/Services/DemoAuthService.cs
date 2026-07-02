@@ -42,6 +42,7 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
                 using var db = CreateReadyDbContext();
                 return db.Subjects
                     .AsNoTracking()
+                    .Where(subject => subject.IsActive)
                     .OrderBy(subject => subject.Name)
                     .Select(subject => subject.Name)
                     .ToList();
@@ -58,6 +59,7 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
                 using var db = CreateReadyDbContext();
                 return db.Subjects
                     .AsNoTracking()
+                    .Where(subject => subject.IsActive)
                     .OrderBy(subject => subject.Department)
                     .ThenBy(subject => subject.Name)
                     .Select(subject => new SubjectInfo(subject.Name, subject.Department))
@@ -75,6 +77,7 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
                 using var db = CreateReadyDbContext();
                 return db.Subjects
                     .AsNoTracking()
+                    .Where(subject => subject.IsActive)
                     .Select(subject => subject.Department)
                     .Concat(db.Users.Select(user => user.ManagedDepartment))
                     .Where(value => value != null && value != string.Empty)
@@ -140,13 +143,29 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
         }
     }
 
-    public RegisterResult RegisterStudent(string username, string password, string displayName)
+    public RegisterResult RegisterUser(
+        string username,
+        string password,
+        string displayName,
+        string role,
+        string managedDepartment,
+        IEnumerable<string> assignedSubjects)
     {
         username = username.Trim();
         displayName = displayName.Trim();
+        role = role?.Trim() ?? string.Empty;
+        managedDepartment = managedDepartment?.Trim() ?? string.Empty;
+        var selectedSubjects = assignedSubjects
+            .Select(subject => subject.Trim())
+            .Where(subject => !string.IsNullOrWhiteSpace(subject))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var normalizedUsername = Normalize(username);
 
-        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(displayName))
+        if (string.IsNullOrWhiteSpace(username)
+            || string.IsNullOrWhiteSpace(password)
+            || string.IsNullOrWhiteSpace(displayName)
+            || !IsAllowedRole(role))
         {
             return RegisterResult.Invalid;
         }
@@ -159,19 +178,56 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
                 return RegisterResult.DuplicateUsername;
             }
 
+            var catalog = db.Subjects
+                .Where(subject => subject.IsActive)
+                .ToDictionary(subject => subject.Name, subject => subject.Department, StringComparer.OrdinalIgnoreCase);
+
+            if (role == "Teacher")
+            {
+                foreach (var subject in selectedSubjects)
+                {
+                    if (!catalog.ContainsKey(subject))
+                    {
+                        return RegisterResult.Invalid;
+                    }
+                }
+            }
+            else
+            {
+                managedDepartment = string.Empty;
+                selectedSubjects.Clear();
+            }
+
             db.Users.Add(new UserEntity
             {
                 Username = username,
                 Password = password,
                 DisplayName = displayName,
-                Role = "Student",
+                Role = role,
                 IsDepartmentHead = false,
-                ManagedDepartment = string.Empty,
+                ManagedDepartment = role == "Teacher" ? managedDepartment : string.Empty,
                 CreatedAt = DateTimeOffset.Now
             });
+
+            foreach (var subject in selectedSubjects)
+            {
+                db.TeacherSubjects.Add(new TeacherSubjectEntity
+                {
+                    Username = username,
+                    Subject = subject,
+                    Department = catalog[subject],
+                    AssignedAt = DateTimeOffset.Now
+                });
+            }
+
             db.SaveChanges();
             return RegisterResult.Success;
         }
+    }
+
+    public RegisterResult RegisterStudent(string username, string password, string displayName)
+    {
+        return RegisterUser(username, password, displayName, "Student", string.Empty, []);
     }
 
     public bool UpdateUserRole(string username, string role, bool isDepartmentHead, string managedDepartment)
@@ -224,9 +280,19 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
         lock (_lock)
         {
             using var db = CreateReadyDbContext();
-            if (db.Subjects.Any(item => item.Name.ToLower() == normalizedSubject))
+            var existing = db.Subjects.FirstOrDefault(item => item.Name.ToLower() == normalizedSubject);
+            if (existing is not null)
             {
-                return false;
+                if (existing.IsActive)
+                {
+                    return false;
+                }
+
+                existing.Department = department;
+                existing.IsActive = true;
+                existing.CreatedAt = DateTimeOffset.Now;
+                db.SaveChanges();
+                return true;
             }
 
             db.Subjects.Add(new SubjectEntity
@@ -237,6 +303,45 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
             });
             db.SaveChanges();
             return true;
+        }
+    }
+
+    public DeleteSubjectResult DeleteSubject(string subject)
+    {
+        subject = subject?.Trim() ?? string.Empty;
+        var normalizedSubject = Normalize(subject);
+
+        if (string.IsNullOrWhiteSpace(subject))
+        {
+            return new DeleteSubjectResult(false, "Tên môn học không hợp lệ.");
+        }
+
+        lock (_lock)
+        {
+            using var db = CreateReadyDbContext();
+            var existing = db.Subjects.FirstOrDefault(item => item.Name.ToLower() == normalizedSubject);
+            if (existing is null || !existing.IsActive)
+            {
+                return new DeleteSubjectResult(false, "Không tìm thấy môn học cần xóa.");
+            }
+
+            var hasDocuments = db.Documents
+                .AsNoTracking()
+                .Any(document => document.Subject.ToLower() == normalizedSubject);
+            if (hasDocuments)
+            {
+                return new DeleteSubjectResult(
+                    false,
+                    "Không thể xóa môn học vì vẫn còn tài liệu thuộc môn này. Vui lòng chuyển hoặc xóa tài liệu trước.");
+            }
+
+            var assignments = db.TeacherSubjects
+                .Where(assignment => assignment.Subject.ToLower() == normalizedSubject)
+                .ToList();
+            db.TeacherSubjects.RemoveRange(assignments);
+            existing.IsActive = false;
+            db.SaveChanges();
+            return new DeleteSubjectResult(true, string.Empty);
         }
     }
 
@@ -255,7 +360,7 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
             using var db = CreateReadyDbContext();
             return db.Subjects
                 .AsNoTracking()
-                .Where(item => item.Name.ToLower() == normalizedSubject)
+                .Where(item => item.IsActive && item.Name.ToLower() == normalizedSubject)
                 .Select(item => item.Department)
                 .FirstOrDefault() ?? string.Empty;
         }
@@ -271,7 +376,7 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
             using var db = CreateReadyDbContext();
             return db.Subjects
                 .AsNoTracking()
-                .Where(item => item.Department.ToLower() == normalizedDepartment)
+                .Where(item => item.IsActive && item.Department.ToLower() == normalizedDepartment)
                 .OrderBy(item => item.Name)
                 .Select(item => item.Name)
                 .ToList();
@@ -298,7 +403,8 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
             using var db = CreateReadyDbContext();
             return db.TeacherSubjects
                 .AsNoTracking()
-                .Where(item => item.Subject.ToLower() == normalizedSubject)
+                .Where(item => item.Subject.ToLower() == normalizedSubject
+                    && db.Subjects.Any(subject => subject.IsActive && subject.Name == item.Subject))
                 .OrderBy(item => item.Username)
                 .Select(item => item.Username)
                 .ToList();
@@ -317,6 +423,11 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
         lock (_lock)
         {
             using var db = CreateReadyDbContext();
+            var activeSubjects = db.Subjects
+                .AsNoTracking()
+                .Where(subject => subject.IsActive)
+                .Select(subject => subject.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var assignedSubjects = db.TeacherSubjects
                 .AsNoTracking()
                 .Select(item => item.Subject)
@@ -324,6 +435,7 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
 
             return subjects
                 .Where(subject => !string.IsNullOrWhiteSpace(subject))
+                .Where(subject => activeSubjects.Contains(subject))
                 .Where(subject => !assignedSubjects.Contains(subject))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(subject => subject)
@@ -356,6 +468,7 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
             }
 
             var catalog = db.Subjects
+                .Where(subject => subject.IsActive)
                 .ToDictionary(subject => subject.Name, subject => subject.Department, StringComparer.OrdinalIgnoreCase);
 
             foreach (var subject in selectedSubjects)
@@ -410,7 +523,8 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
             using var db = CreateReadyDbContext();
             return db.TeacherSubjects
                 .AsNoTracking()
-                .Where(item => item.Username.ToLower() == normalizedUsername)
+                .Where(item => item.Username.ToLower() == normalizedUsername
+                    && db.Subjects.Any(subject => subject.IsActive && subject.Name == item.Subject))
                 .OrderBy(item => item.Subject)
                 .Select(item => item.Subject)
                 .ToList();
@@ -460,6 +574,11 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
 
             IF COL_LENGTH(N'[dbo].[Subjects]', N'Department') IS NULL
                 ALTER TABLE [dbo].[Subjects] ADD [Department] nvarchar(120) NOT NULL CONSTRAINT [DF_Subjects_Department] DEFAULT N'';
+
+            IF COL_LENGTH(N'[dbo].[Subjects]', N'IsActive') IS NULL
+                ALTER TABLE [dbo].[Subjects] ADD [IsActive] bit NOT NULL CONSTRAINT [DF_Subjects_IsActive] DEFAULT 1;
+
+            EXEC(N'UPDATE [dbo].[Subjects] SET [IsActive] = 1 WHERE [IsActive] IS NULL;');
 
             IF OBJECT_ID(N'[dbo].[TeacherSubjects]', N'U') IS NULL
             BEGIN
@@ -626,6 +745,8 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
 }
 
 public sealed record SubjectInfo(string Name, string Department);
+
+public sealed record DeleteSubjectResult(bool Success, string ErrorMessage);
 
 public enum RegisterResult
 {

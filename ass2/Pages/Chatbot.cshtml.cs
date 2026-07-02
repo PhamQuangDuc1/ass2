@@ -86,6 +86,9 @@ public class ChatbotModel(
     public string NewDepartment { get; set; } = string.Empty;
 
     [BindProperty]
+    public string DeletedSubject { get; set; } = string.Empty;
+
+    [BindProperty]
     public string AssignTeacherUsername { get; set; } = string.Empty;
 
     [BindProperty]
@@ -187,7 +190,7 @@ public class ChatbotModel(
 
     public async Task<IActionResult> OnPostUpdateDocumentAsync(CancellationToken cancellationToken)
     {
-        ActiveTab = EditDocumentsTab;
+        ActiveTab = "documentsTab";
         var existing = await knowledgeBase.GetDocumentAsync(DocumentId, cancellationToken);
         if (string.IsNullOrWhiteSpace(Chapter) || !CanEditDocument(existing, Subject))
         {
@@ -229,7 +232,7 @@ public class ChatbotModel(
 
     public async Task<IActionResult> OnPostDeleteDocumentAsync(CancellationToken cancellationToken)
     {
-        ActiveTab = EditDocumentsTab;
+        ActiveTab = "documentsTab";
         var existing = await knowledgeBase.GetDocumentAsync(DocumentId, cancellationToken);
         if (!CanEditDocument(existing))
         {
@@ -257,7 +260,7 @@ public class ChatbotModel(
 
     public async Task<IActionResult> OnPostReindexDocumentAsync(CancellationToken cancellationToken)
     {
-        ActiveTab = EditDocumentsTab;
+        ActiveTab = "documentsTab";
         var existing = await knowledgeBase.GetDocumentAsync(DocumentId, cancellationToken);
         if (!CanEditDocument(existing))
         {
@@ -322,6 +325,31 @@ public class ChatbotModel(
         }
 
         ActiveTab = "subjectsTab";
+        await LoadPageDataAsync(cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostDeleteSubjectAsync(CancellationToken cancellationToken)
+    {
+        LoadCurrentUser();
+        ActiveTab = "subjectsTab";
+        if (CurrentRole != "Admin")
+        {
+            ErrorMessage = "Chỉ Admin mới được xóa môn học.";
+            await LoadPageDataAsync(cancellationToken);
+            return Page();
+        }
+
+        var result = authService.DeleteSubject(DeletedSubject);
+        if (result.Success)
+        {
+            StatusMessage = $"Đã xóa môn học {DeletedSubject.Trim()}. Các giáo viên đang dạy môn này đã được gỡ phân công.";
+        }
+        else
+        {
+            ErrorMessage = result.ErrorMessage;
+        }
+
         await LoadPageDataAsync(cancellationToken);
         return Page();
     }
@@ -460,9 +488,7 @@ public class ChatbotModel(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(value => value)
             .ToList();
-        SubjectOptions = Documents
-            .Select(document => document.Subject)
-            .Concat(authService.Subjects)
+        SubjectOptions = authService.Subjects
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(value => value)

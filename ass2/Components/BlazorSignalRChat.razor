@@ -11,8 +11,8 @@
     <section class="app-workspace">
         <header class="workspace-header">
             <div>
-                <p class="eyebrow">Blazor Server + SignalR</p>
-                <h1>Chat realtime bang C#</h1>
+                <p class="eyebrow">Chatbot AI</p>
+                <h1>Hỏi đáp tài liệu bằng AI</h1>
             </div>
             <div class="user-card">
                 <strong>@ConnectionLabel</strong>
@@ -34,8 +34,8 @@ else
 
     private HubConnection? hubConnection;
     private string Question { get; set; } = string.Empty;
-    private string StatusMessage { get; set; } = "Dang ket noi...";
-    private string ConnectionLabel { get; set; } = "SignalR";
+    private string StatusMessage { get; set; } = "Đang kết nối...";
+    private string ConnectionLabel { get; set; } = "AI";
     private readonly List<ChatMessageItem> Messages = [];
 
     private bool CanSend =>
@@ -47,8 +47,8 @@ else
     private RenderFragment ChatPanel => @<section class="tab-panel active">
         <div class="tab-heading">
             <div>
-                <p class="eyebrow">C# HubConnection</p>
-                <h2>Gui nhan qua /chatHub</h2>
+                <p class="eyebrow">Smart Study Buddy</p>
+                <h2>Chat với AI theo tài liệu đã index</h2>
             </div>
             <span class="session-chip">@ConnectionStateText</span>
         </div>
@@ -57,8 +57,8 @@ else
             @if (Messages.Count == 0)
             {
                 <article class="message message-bot">
-                    <strong>Bot</strong>
-                    <p>Nhap cau hoi, Blazor component se dung HubConnection bang C# de goi SignalR hub.</p>
+                    <strong>AI</strong>
+                    <p>Nhập câu hỏi về tài liệu môn học, AI sẽ trả lời dựa trên nội dung đã index.</p>
                 </article>
             }
 
@@ -71,7 +71,7 @@ else
                     @if (item.Sources.Count > 0)
                     {
                         <div class="source-block">
-                            <span>Nguon tai lieu</span>
+                            <span>Nguồn tài liệu</span>
                             <ul class="source-list">
                                 @foreach (var source in item.Sources)
                                 {
@@ -91,8 +91,8 @@ else
         </section>
 
         <form class="chat-input" @onsubmit="SendQuestionAsync" @onsubmit:preventDefault>
-            <input @bind="Question" autocomplete="off" placeholder="VD: SignalR hoat dong nhu the nao?" />
-            <button type="submit" disabled="@(!CanSend)">Gui bang C#</button>
+            <input @bind="Question" @bind:event="oninput" autocomplete="off" placeholder="Nhập câu hỏi cho AI..." />
+            <button type="submit" disabled="@(!CanSend)">Gửi cho AI</button>
         </form>
     </section>;
 
@@ -110,44 +110,44 @@ else
 
         hubConnection.On<string>("ReceiveUserQuestion", question =>
         {
-            Messages.Add(new ChatMessageItem("Sinh vien", question, true, []));
+            Messages.Add(new ChatMessageItem("Bạn", question, true, []));
             return InvokeAsync(StateHasChanged);
         });
 
         hubConnection.On<ChatTurnPayload>("ReceiveBotAnswer", turn =>
         {
-            Messages.Add(new ChatMessageItem("Bot", turn.Answer, false, turn.Sources));
-            StatusMessage = "Da nhan cau tra loi realtime.";
+            Messages.Add(new ChatMessageItem("AI", turn.Answer, false, turn.Sources));
+            StatusMessage = "Đã nhận câu trả lời từ AI.";
             return InvokeAsync(StateHasChanged);
         });
 
         hubConnection.On<string>("ReceiveChatError", message =>
         {
-            Messages.Add(new ChatMessageItem("Bot", message, false, []));
-            StatusMessage = "Co loi khi xu ly cau hoi.";
+            Messages.Add(new ChatMessageItem("AI", message, false, []));
+            StatusMessage = "Có lỗi khi xử lý câu hỏi.";
             return InvokeAsync(StateHasChanged);
         });
 
         hubConnection.Reconnecting += _ =>
         {
-            StatusMessage = "Dang ket noi lai...";
+            StatusMessage = "Đang kết nối lại...";
             return InvokeAsync(StateHasChanged);
         };
 
         hubConnection.Reconnected += _ =>
         {
-            StatusMessage = "Da ket noi lai.";
+            StatusMessage = "Đã kết nối lại.";
             return InvokeAsync(StateHasChanged);
         };
 
         hubConnection.Closed += _ =>
         {
-            StatusMessage = "Da ngat ket noi.";
+            StatusMessage = "Đã ngắt kết nối.";
             return InvokeAsync(StateHasChanged);
         };
 
         await hubConnection.StartAsync();
-        StatusMessage = "Da ket noi SignalR bang C#.";
+        StatusMessage = "Đã sẵn sàng chat với AI.";
     }
 
     private async Task SendQuestionAsync()
@@ -159,7 +159,7 @@ else
 
         var question = Question.Trim();
         Question = string.Empty;
-        StatusMessage = "Dang gui cau hoi...";
+        StatusMessage = "Đang gửi câu hỏi cho AI...";
         await hubConnection.InvokeAsync("SendQuestion", question);
     }
 

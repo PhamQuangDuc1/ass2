@@ -38,7 +38,7 @@
         <a class="tab-button @(Model.ActiveTab == "documentsTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="documentsTab">Tai lieu</a>
         @if (Model.CanSeeUploadTab)
         {
-            <a class="tab-button @(Model.ActiveTab == "editDocumentsTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="editDocumentsTab">Chỉnh sửa sau</a>
+            <a class="tab-button @(Model.ActiveTab == "editDocumentsTab" ? "active" : "")" asp-page="/Chatbot" asp-route-ActiveTab="editDocumentsTab">Upload tài liệu</a>
         }
         @if (Model.CurrentRole == "Admin")
         {
@@ -49,19 +49,198 @@
     </nav>
 
     <section class="tab-panel @(Model.ActiveTab == "chatTab" ? "active" : "")" id="chatTab" hidden="@(Model.ActiveTab != "chatTab")">
-        <component type="typeof(BlazorSignalRChat)" render-mode="ServerPrerendered" param-ShowHeader="false" />
+        <div class="tab-heading">
+            <div>
+                <p class="eyebrow">Smart Study Buddy</p>
+                <h2>Chat với AI theo tài liệu đã index</h2>
+            </div>
+            <span class="session-chip">AI</span>
+        </div>
+
+        <section class="chat-stream">
+            @if (Model.InitialHistory.Count == 0)
+            {
+                <article class="message message-bot">
+                    <strong>AI</strong>
+                    <p>Nhập câu hỏi về tài liệu môn học, AI sẽ trả lời dựa trên nội dung đã index.</p>
+                </article>
+            }
+
+            @foreach (var turn in Model.InitialHistory)
+            {
+                <article class="message message-user">
+                    <strong>Bạn</strong>
+                    <p>@turn.Question</p>
+                </article>
+                <article class="message message-bot">
+                    <strong>AI</strong>
+                    <p>@turn.Answer</p>
+
+                    @if (turn.Sources.Count > 0)
+                    {
+                        <div class="source-block">
+                            <span>Nguồn tài liệu</span>
+                            <ul class="source-list">
+                                @foreach (var source in turn.Sources)
+                                {
+                                    <li>
+                                        <strong>@source.Title | @source.Subject | @source.Chapter | GV: @source.Teacher</strong>
+                                        @if (!string.IsNullOrWhiteSpace(source.Snippet))
+                                        {
+                                            <small>@source.Snippet</small>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </article>
+            }
+        </section>
+
+        <form class="chat-input" method="post" asp-page-handler="Ask">
+            <input asp-for="Question" autocomplete="off" placeholder="Nhập câu hỏi cho AI..." />
+            <button type="submit">Gửi cho AI</button>
+        </form>
     </section>
 
     <section class="tab-panel @(Model.ActiveTab == "documentsTab" ? "active" : "")" id="documentsTab" hidden="@(Model.ActiveTab != "documentsTab")">
+        @{
+            var visibleDocuments = (Model.VisibleSubjectOptions.Count == 0
+                ? Model.Documents
+                : Model.Documents
+                    .Where(document => Model.VisibleSubjectOptions.Contains(document.Subject, StringComparer.OrdinalIgnoreCase)))
+                .ToList();
+        }
         <div class="tab-heading">
             <div>
-                <p class="eyebrow">Quan ly tai lieu</p>
-                <h2>Danh sach tai lieu da index</h2>
+                <p class="eyebrow">Quản lý tài liệu</p>
+                <h2>Danh sách tài liệu đã index</h2>
             </div>
-            <span class="session-chip"><span id="visibleDocumentCount">@Model.Documents.Count</span>/<span id="totalDocumentCount">@Model.Documents.Count</span> tai lieu</span>
+            <span class="session-chip">@visibleDocuments.Count/@Model.Documents.Count tài liệu</span>
         </div>
 
-        <component type="typeof(RealtimeDocuments)" render-mode="ServerPrerendered" param-AllowedSubjects="Model.VisibleSubjectOptions" />
+        <div class="subject-chapter-summary" aria-label="Thống kê theo môn học và chương">
+            @foreach (var summary in visibleDocuments
+                .GroupBy(document => new { document.Subject, document.Chapter })
+                .Select(group => new SubjectChapterSummary(group.Key.Subject, group.Key.Chapter, group.Count()))
+                .OrderBy(summary => summary.Subject)
+                .ThenBy(summary => summary.Chapter))
+            {
+                <span>@summary.Subject / @summary.Chapter: @summary.DocumentCount</span>
+            }
+        </div>
+
+        <div class="document-list document-list-wide">
+            @foreach (var document in visibleDocuments)
+            {
+                var chunks = Model.GetDocumentChunks(document.Id);
+                var canManageDocument = Model.CanManageDocument(document);
+                <article class="document-item" data-document-id="@document.Id" data-subject="@document.Subject" data-chapter="@document.Chapter">
+                    @if (canManageDocument)
+                    {
+                        <input type="checkbox" id="edit-toggle-@document.Id" class="document-edit-toggle" />
+                    }
+                    <div class="document-header">
+                        <div class="document-title-row">
+                            <strong>@document.Title</strong>
+                            <span class="department-badge">Bộ môn: @document.Department</span>
+                        </div>
+                        @if (canManageDocument)
+                        {
+                            <label for="edit-toggle-@document.Id" class="secondary-action edit-toggle-btn">
+                                <span class="edit-label">Chỉnh sửa</span>
+                                <span class="close-label">Đóng</span>
+                            </label>
+                        }
+                    </div>
+                    <div class="document-meta">
+                        <span>Môn: @document.Subject</span>
+                        <span>Chương: @document.Chapter</span>
+                        <span>GV: @document.Teacher</span>
+                    </div>
+                    <small>@document.FileName | Upload: @document.UploadedBy | @document.UploadedAt.ToString("dd/MM HH:mm")</small>
+                    @if (document.HasOriginalFile)
+                    {
+                        <a class="secondary-action" asp-page="/Chatbot" asp-page-handler="DownloadDocument" asp-route-id="@document.Id">Tải file gốc</a>
+                    }
+                    <details class="document-viewer">
+                        <summary>Xem tài liệu</summary>
+                        <pre>@document.Content</pre>
+                    </details>
+                    <details class="document-viewer chunk-viewer">
+                        <summary>Xem chunks đã index (@chunks.Count)</summary>
+                        @if (chunks.Count == 0)
+                        {
+                            <p class="empty-chunks">Tài liệu mới đã được index. Tải lại trang để xem chi tiết chunks nếu cần.</p>
+                        }
+                        else
+                        {
+                            <ol class="chunk-list">
+                                @foreach (var chunk in chunks)
+                                {
+                                    <li>
+                                        <div class="chunk-heading">
+                                            <strong>Chunk @(chunk.ChunkIndex + 1)</strong>
+                                            <span>@chunk.Content.Length ký tự</span>
+                                        </div>
+                                        <pre>@chunk.Content</pre>
+                                    </li>
+                                }
+                            </ol>
+                        }
+                    </details>
+                    @if (canManageDocument)
+                    {
+                        <div id="edit-form-@document.Id" class="document-edit-form-wrapper hidden">
+                            <form class="document-edit-form" method="post" enctype="multipart/form-data" asp-page-handler="UpdateDocument">
+                                <input type="hidden" name="DocumentId" value="@document.Id" />
+                                <div class="form-grid">
+                                    <div class="form-row">
+                                        <label for="title-@document.Id">Tên tài liệu</label>
+                                        <input id="title-@document.Id" name="Title" value="@document.Title" />
+                                    </div>
+                                    <div class="form-row">
+                                        <label for="subject-@document.Id">Môn học</label>
+                                        <select id="subject-@document.Id" name="Subject">
+                                            @foreach (var subject in Model.UploadSubjectOptions)
+                                            {
+                                                <option value="@subject" selected="@(string.Equals(document.Subject, subject, StringComparison.OrdinalIgnoreCase))">@subject</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="form-row">
+                                        <label for="chapter-@document.Id">Chương</label>
+                                        <input id="chapter-@document.Id" name="Chapter" value="@document.Chapter" />
+                                    </div>
+                                    <div class="form-row">
+                                        <label for="file-@document.Id">File mới nếu cần</label>
+                                        <input id="file-@document.Id" name="UploadFile" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.csv" />
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <label for="content-@document.Id">Nội dung index</label>
+                                    <textarea id="content-@document.Id" name="ManualContent" rows="4">@document.Content</textarea>
+                                </div>
+                                <div class="tab-actions">
+                                    <button type="submit" class="secondary-action">Sửa thông tin tài liệu</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="document-actions-row">
+                            <form method="post" asp-page-handler="ReindexDocument">
+                                <input type="hidden" name="DocumentId" value="@document.Id" />
+                                <button type="submit" class="secondary-action">Cập nhật/Re-index tài liệu</button>
+                            </form>
+                            <form method="post" asp-page-handler="DeleteDocument">
+                                <input type="hidden" name="DocumentId" value="@document.Id" />
+                                <button type="submit" class="secondary-action danger-action">Xóa tài liệu</button>
+                            </form>
+                        </div>
+                    }
+                </article>
+            }
+        </div>
     </section>
 
     @if (Model.CanSeeUploadTab)
@@ -130,71 +309,6 @@
                 <button type="submit" class="primary-action">Upload & index</button>
                 </form>
             }
-
-            <section class="teacher-document-actions">
-                <div class="tab-heading">
-                    <div>
-                        <p class="eyebrow">Tai lieu cua ban</p>
-                        <h3>Sua, xoa, re-index tai lieu</h3>
-                    </div>
-                    <span class="session-chip">@Model.Documents.Count(Model.CanManageDocument) tai lieu</span>
-                </div>
-
-                <div class="document-list document-list-wide">
-                    @foreach (var document in Model.Documents.Where(Model.CanManageDocument))
-                    {
-                        <article class="document-item">
-                            <div class="document-header">
-                                <strong>@document.Title</strong>
-                                <span class="department-badge">@document.Subject / @document.Chapter</span>
-                            </div>
-                            <form class="document-edit-form" method="post" enctype="multipart/form-data" asp-page-handler="UpdateDocument">
-                                <input type="hidden" name="DocumentId" value="@document.Id" />
-                                <div class="form-grid">
-                                    <div class="form-row">
-                                        <label for="title-@document.Id">Ten tai lieu</label>
-                                        <input id="title-@document.Id" name="Title" value="@document.Title" />
-                                    </div>
-                                    <div class="form-row">
-                                        <label for="subject-@document.Id">Mon hoc</label>
-                                        <select id="subject-@document.Id" name="Subject">
-                                            @foreach (var subject in Model.UploadSubjectOptions)
-                                            {
-                                                <option value="@subject" selected="@(string.Equals(document.Subject, subject, StringComparison.OrdinalIgnoreCase))">@subject</option>
-                                            }
-                                        </select>
-                                    </div>
-                                    <div class="form-row">
-                                        <label for="chapter-@document.Id">Chuong</label>
-                                        <input id="chapter-@document.Id" name="Chapter" value="@document.Chapter" />
-                                    </div>
-                                    <div class="form-row">
-                                        <label for="file-@document.Id">File moi neu can</label>
-                                        <input id="file-@document.Id" name="UploadFile" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.csv" />
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <label for="content-@document.Id">Noi dung index</label>
-                                    <textarea id="content-@document.Id" name="ManualContent" rows="4">@document.Content</textarea>
-                                </div>
-                                <div class="tab-actions">
-                                    <button type="submit" class="secondary-action">Sua thong tin tai lieu</button>
-                                </div>
-                            </form>
-                            <div class="document-actions-row">
-                                <form method="post" asp-page-handler="ReindexDocument">
-                                    <input type="hidden" name="DocumentId" value="@document.Id" />
-                                    <button type="submit" class="secondary-action">Cap nhat/Re-index tai lieu</button>
-                                </form>
-                                <form method="post" asp-page-handler="DeleteDocument">
-                                    <input type="hidden" name="DocumentId" value="@document.Id" />
-                                    <button type="submit" class="secondary-action danger-action">Xoa tai lieu</button>
-                                </form>
-                            </div>
-                        </article>
-                    }
-                </div>
-            </section>
         </section>
     }
 
@@ -204,7 +318,7 @@
             <div class="tab-heading">
                 <div>
                     <p class="eyebrow">Admin</p>
-                    <h2>Set role tai khoan va chunk</h2>
+                    <h2>Quản trị tài khoản và chunk</h2>
                 </div>
                 <span class="session-chip">@Model.Users.Count tai khoan</span>
             </div>
@@ -236,43 +350,6 @@
                             <span>Bo mon giang day: @(user.Role == "Teacher" && !string.IsNullOrWhiteSpace(user.ManagedDepartment) ? user.ManagedDepartment : "Khong")</span>
                             <span>Mon duoc gan: @(Model.GetAssignedSubjects(user.Username).Count > 0 ? string.Join(", ", Model.GetAssignedSubjects(user.Username)) : "Chua co")</span>
                         </div>
-                        <form method="post" asp-page-handler="UpdateRole" class="role-update-form">
-                            <input type="hidden" name="RoleUsername" value="@user.Username" />
-                            <div class="form-row">
-                                <label for="role-@user.Username">Role</label>
-                                <select id="role-@user.Username" name="Role">
-                                    <option value="Student" selected="@(user.Role == "Student")">Student</option>
-                                    <option value="Teacher" selected="@(user.Role == "Teacher")">Teacher</option>
-                                    <option value="Admin" selected="@(user.Role == "Admin")">Admin</option>
-                                </select>
-                            </div>
-                            @if (user.Role == "Teacher")
-                            {
-                                <div class="form-row">
-                                    <label for="department-@user.Username">Bo mon giang day</label>
-                                    <select id="department-@user.Username" name="ManagedDepartment">
-                                        <option value="">Chon bo mon</option>
-                                        @foreach (var department in Model.DepartmentOptions)
-                                        {
-                                            <option value="@department" selected="@(string.Equals(user.ManagedDepartment, department, StringComparison.OrdinalIgnoreCase))">@department</option>
-                                        }
-                                    </select>
-                                </div>
-                                <div class="form-row">
-                                    <label for="subject-@user.Username">Mon hoc giang day</label>
-                                    <select id="subject-@user.Username" name="AssignSubjects" multiple size="5">
-                                        @foreach (var subject in Model.SubjectCatalog)
-                                        {
-                                            var assignedToThisTeacher = Model.GetAssignedSubjects(user.Username).Contains(subject.Name, StringComparer.OrdinalIgnoreCase);
-                                            <option value="@subject.Name" selected="@assignedToThisTeacher">
-                                                @subject.Name (@subject.Department)
-                                            </option>
-                                        }
-                                    </select>
-                                </div>
-                            }
-                            <button type="submit" class="secondary-action">Cap nhat</button>
-                        </form>
                     </article>
                 }
             </div>
@@ -281,30 +358,36 @@
         <section class="tab-panel @(Model.ActiveTab == "subjectsTab" ? "active" : "")" id="subjectsTab" hidden="@(Model.ActiveTab != "subjectsTab")">
             <div class="tab-heading">
                 <div>
-                    <p class="eyebrow">Mon hoc</p>
-                    <h2>Quan ly mon hoc va giao vien</h2>
+                    <p class="eyebrow">Môn học</p>
+                    <h2>Quản lý môn học và giáo viên</h2>
                 </div>
-                <span class="session-chip">@Model.SubjectOptions.Count mon hoc</span>
+                <span class="session-chip">@Model.SubjectOptions.Count môn học</span>
             </div>
 
             <div class="admin-tools">
                 <form method="post" asp-page-handler="CreateSubject" class="role-update-form">
                     <div class="form-row">
-                        <label asp-for="NewDepartment">Bo mon</label>
+                        <label asp-for="NewDepartment">Bộ môn</label>
                         <input asp-for="NewDepartment" placeholder="VD: PRN222" />
                     </div>
                     <div class="form-row">
-                        <label asp-for="NewSubject">Mon hoc moi</label>
+                        <label asp-for="NewSubject">Môn học mới</label>
                         <input asp-for="NewSubject" placeholder="VD: Entity Framework" />
                     </div>
-                    <button type="submit" class="secondary-action">Tao mon</button>
+                    <button type="submit" class="secondary-action">Tạo môn</button>
                 </form>
             </div>
 
             <div class="subject-chapter-summary">
-                @foreach (var subject in Model.SubjectOptions)
+                @foreach (var subject in Model.SubjectCatalog)
                 {
-                    <span>@subject (@Model.SubjectCatalog.FirstOrDefault(item => item.Name == subject)?.Department) - @Model.GetSubjectOwnerLabel(subject)</span>
+                    <span>
+                        @subject.Name (@subject.Department) - @Model.GetSubjectOwnerLabel(subject.Name)
+                        <form method="post" asp-page-handler="DeleteSubject">
+                            <input type="hidden" name="DeletedSubject" value="@subject.Name" />
+                            <button type="submit" class="secondary-action danger-action">Xóa môn học</button>
+                        </form>
+                    </span>
                 }
             </div>
         </section>
