@@ -9,6 +9,7 @@ public sealed record KnowledgeDocument(
     string Chapter,
     string Teacher,
     string UploadedBy,
+    string UploadedByUserId,
     string Content,
     DateTimeOffset UploadedAt,
     bool HasOriginalFile);
@@ -36,3 +37,5 @@ public sealed record ChatTurn(
     string Answer,
     IReadOnlyList<SourceMatch> Sources,
     DateTimeOffset CreatedAt);
+
+public sealed record ChunkSettings(int ChunkSize, int ChunkOverlap);

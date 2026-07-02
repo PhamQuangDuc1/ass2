@@ -195,31 +195,9 @@ public sealed class DemoAuthService(IDbContextFactory<AppDbContext> dbContextFac
                 return false;
             }
 
-            if (role == "Teacher" && isDepartmentHead)
-            {
-                if (string.IsNullOrWhiteSpace(managedDepartment))
-                {
-                    return false;
-                }
-
-                var normalizedDepartment = Normalize(managedDepartment);
-                var existingHead = db.Users
-                    .AsNoTracking()
-                    .FirstOrDefault(item => item.Role == "Teacher"
-                        && item.IsDepartmentHead
-                        && item.ManagedDepartment != null
-                        && item.ManagedDepartment.ToLower() == normalizedDepartment
-                        && item.Username.ToLower() != normalizedUsername);
-
-                if (existingHead is not null)
-                {
-                    return false;
-                }
-            }
-
             user.Role = role;
-            user.IsDepartmentHead = role == "Teacher" && isDepartmentHead;
-            user.ManagedDepartment = user.IsDepartmentHead ? managedDepartment : string.Empty;
+            user.IsDepartmentHead = false;
+            user.ManagedDepartment = role == "Teacher" ? managedDepartment : string.Empty;
 
             if (role != "Teacher")
             {

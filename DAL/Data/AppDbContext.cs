@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<SubjectEntity> Subjects => Set<SubjectEntity>();
     public DbSet<TeacherSubjectEntity> TeacherSubjects => Set<TeacherSubjectEntity>();
+    public DbSet<SystemSettingEntity> SystemSettings => Set<SystemSettingEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,6 +26,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(document => document.Chapter).HasMaxLength(120);
             entity.Property(document => document.Teacher).HasMaxLength(120);
             entity.Property(document => document.UploadedBy).HasMaxLength(120);
+            entity.Property(document => document.UploadedByUserId).HasMaxLength(120);
             entity.Property(document => document.ContentType).HasMaxLength(120);
             entity.HasMany(document => document.Chunks)
                 .WithOne(chunk => chunk.Document)
@@ -103,6 +105,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .HasForeignKey(assignment => assignment.Subject)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<SystemSettingEntity>(entity =>
+        {
+            entity.ToTable("SystemSettings");
+            entity.HasKey(setting => setting.Key);
+            entity.Property(setting => setting.Key).HasMaxLength(120);
+            entity.Property(setting => setting.Value).HasMaxLength(400);
+        });
     }
 }
 
@@ -116,6 +126,7 @@ public sealed class DocumentEntity
     public string Chapter { get; set; } = string.Empty;
     public string Teacher { get; set; } = string.Empty;
     public string UploadedBy { get; set; } = string.Empty;
+    public string UploadedByUserId { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public string ContentType { get; set; } = string.Empty;
     public byte[]? FileContent { get; set; }
@@ -189,4 +200,11 @@ public sealed class TeacherSubjectEntity
     public string Subject { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
     public DateTimeOffset AssignedAt { get; set; }
+}
+
+public sealed class SystemSettingEntity
+{
+    public string Key { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
+    public DateTimeOffset UpdatedAt { get; set; }
 }

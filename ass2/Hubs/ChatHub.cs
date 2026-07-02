@@ -112,6 +112,35 @@ public sealed record DocumentUploadedPayload(
     bool HasOriginalFile,
     string DownloadUrl);
 
+public sealed record DocumentCreated(DocumentChangedPayload Document);
+
+public sealed record DocumentUpdated(DocumentChangedPayload Document);
+
+public sealed record DocumentReindexed(DocumentChangedPayload Document);
+
+public sealed record DocumentDeleted(
+    Guid Id,
+    string Title,
+    string Department,
+    string Subject,
+    string DeletedBy);
+
+public sealed record DocumentChangedPayload(
+    Guid Id,
+    string Title,
+    string FileName,
+    string Department,
+    string Subject,
+    string Chapter,
+    string Teacher,
+    string UploadedBy,
+    string UploadedByUserId,
+    string Content,
+    string UploadedAt,
+    bool HasOriginalFile,
+    string DownloadUrl,
+    int ChunkCount);
+
 public sealed class InternalSignalRToken
 {
     public const string HeaderName = "X-Ass2-Internal-SignalR";

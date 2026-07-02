@@ -179,7 +179,68 @@
             return InvokeAsync(StateHasChanged);
         });
 
+        hubConnection.On<DocumentCreated>("DocumentCreated", message =>
+        {
+            UpsertDocument(message.Document, $"Tai lieu moi da duoc upload: {message.Document.Title}", true);
+            return InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<DocumentUpdated>("DocumentUpdated", message =>
+        {
+            UpsertDocument(message.Document, $"Tai lieu da duoc cap nhat: {message.Document.Title}", false);
+            return InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<DocumentReindexed>("DocumentReindexed", message =>
+        {
+            UpsertDocument(message.Document, $"Tai lieu da duoc re-index: {message.Document.Title}", false);
+            return InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<DocumentDeleted>("DocumentDeleted", message =>
+        {
+            var canSeeDocument = AllowedSubjects.Count == 0
+                || AllowedSubjects.Contains(message.Subject, StringComparer.OrdinalIgnoreCase);
+
+            if (canSeeDocument)
+            {
+                Documents.RemoveAll(document => document.Id == message.Id);
+                StatusMessage = $"Tai lieu da bi xoa: {message.Title}";
+            }
+
+            return InvokeAsync(StateHasChanged);
+        });
+
         await hubConnection.StartAsync();
+    }
+
+    private void UpsertDocument(DocumentChangedPayload payload, string statusMessage, bool markAsNew)
+    {
+        var canSeeDocument = AllowedSubjects.Count == 0
+            || AllowedSubjects.Contains(payload.Subject, StringComparer.OrdinalIgnoreCase);
+        var existingIndex = Documents.FindIndex(document => document.Id == payload.Id);
+
+        if (!canSeeDocument)
+        {
+            if (existingIndex >= 0)
+            {
+                Documents.RemoveAt(existingIndex);
+            }
+
+            return;
+        }
+
+        var item = ToDocumentItem(payload, markAsNew);
+        if (existingIndex >= 0)
+        {
+            Documents[existingIndex] = item;
+        }
+        else
+        {
+            Documents.Insert(0, item);
+        }
+
+        StatusMessage = statusMessage;
     }
 
     private void ClearFilters()
@@ -234,6 +295,25 @@
             payload.DownloadUrl,
             [],
             true);
+    }
+
+    private static DocumentItem ToDocumentItem(DocumentChangedPayload payload, bool isNew)
+    {
+        return new DocumentItem(
+            payload.Id,
+            payload.Title,
+            payload.FileName,
+            payload.Department,
+            payload.Subject,
+            payload.Chapter,
+            payload.Teacher,
+            payload.UploadedBy,
+            payload.Content,
+            payload.UploadedAt,
+            payload.HasOriginalFile,
+            payload.DownloadUrl,
+            [],
+            isNew);
     }
 
     private sealed record DocumentItem(

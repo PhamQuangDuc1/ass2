@@ -18,19 +18,56 @@ public sealed class KnowledgeBaseService(
     GeminiAiService geminiAi)
 {
     private const int EmbeddingDimensions = 256;
-    private const int ChunkTargetLength = 1100;
-    private const int ChunkOverlapLength = 180;
+    private const int DefaultChunkSize = 1100;
+    private const int DefaultChunkOverlap = 180;
     private const int ConversationContextTurns = 6;
+    private const string ChunkSizeSettingKey = "ChunkSize";
+    private const string ChunkOverlapSettingKey = "ChunkOverlap";
     private static readonly JsonSerializerOptions EmbeddingJsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<IReadOnlyList<KnowledgeDocument>> GetDocumentsAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
         return await db.Documents
             .AsNoTracking()
             .OrderByDescending(document => document.UploadedAt)
             .Select(document => ToModel(document))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<KnowledgeDocument?> GetDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
+        var document = await db.Documents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+
+        return document is null ? null : ToModel(document);
+    }
+
+    public async Task<ChunkSettings> GetChunkSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+        return await ReadChunkSettingsAsync(db, cancellationToken);
+    }
+
+    public async Task<ChunkSettings> UpdateChunkSettingsAsync(int chunkSize, int chunkOverlap, CancellationToken cancellationToken = default)
+    {
+        chunkSize = Math.Clamp(chunkSize, 200, 8000);
+        chunkOverlap = Math.Clamp(chunkOverlap, 0, Math.Max(0, chunkSize - 1));
+
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+        await UpsertSettingAsync(db, ChunkSizeSettingKey, chunkSize.ToString(CultureInfo.InvariantCulture), cancellationToken);
+        await UpsertSettingAsync(db, ChunkOverlapSettingKey, chunkOverlap.ToString(CultureInfo.InvariantCulture), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new ChunkSettings(chunkSize, chunkOverlap);
     }
 
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>>> GetChunksByDocumentAsync(
@@ -95,6 +132,7 @@ public sealed class KnowledgeBaseService(
         string chapter,
         string teacher,
         string uploadedBy,
+        string uploadedByUserId,
         string manualContent,
         CancellationToken cancellationToken)
     {
@@ -118,6 +156,7 @@ public sealed class KnowledgeBaseService(
             chapter.Trim(),
             teacher.Trim(),
             uploadedBy.Trim(),
+            uploadedByUserId.Trim(),
             content.Trim(),
             DateTimeOffset.Now,
             originalFile.Length > 0);
@@ -128,16 +167,112 @@ public sealed class KnowledgeBaseService(
         var documentEntity = ToEntity(document);
         documentEntity.ContentType = file?.ContentType ?? string.Empty;
         documentEntity.FileContent = originalFile.Length > 0 ? originalFile : null;
-        documentEntity.Chunks = BuildChunkEntities(document).ToList();
+        documentEntity.Chunks = BuildChunkEntities(document, await ReadChunkSettingsAsync(db, cancellationToken)).ToList();
         db.Documents.Add(documentEntity);
         await db.SaveChangesAsync(cancellationToken);
 
         return document;
     }
 
+    public async Task<KnowledgeDocument?> UpdateDocumentAsync(
+        Guid documentId,
+        IFormFile? file,
+        string title,
+        string department,
+        string subject,
+        string chapter,
+        string teacher,
+        string manualContent,
+        CancellationToken cancellationToken)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
+        var document = await db.Documents
+            .FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+
+        if (document is null)
+        {
+            return null;
+        }
+
+        var originalFile = await ReadOriginalFileAsync(file, cancellationToken);
+        var content = string.IsNullOrWhiteSpace(manualContent)
+            ? originalFile.Length > 0
+                ? await ExtractReadableContentAsync(file, cancellationToken)
+                : document.Content
+            : manualContent;
+
+        document.Title = string.IsNullOrWhiteSpace(title) ? document.Title : title.Trim();
+        document.Department = department.Trim();
+        document.Subject = subject.Trim();
+        document.Chapter = chapter.Trim();
+        document.Teacher = teacher.Trim();
+        document.Content = string.IsNullOrWhiteSpace(content) ? document.Content : content.Trim();
+
+        if (originalFile.Length > 0 && file is not null)
+        {
+            document.FileName = file.FileName;
+            document.ContentType = file.ContentType ?? string.Empty;
+            document.FileContent = originalFile;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.DocumentChunks
+            .Where(chunk => chunk.DocumentId == document.Id)
+            .ExecuteDeleteAsync(cancellationToken);
+        db.DocumentChunks.AddRange(BuildChunkEntities(ToModel(document), await ReadChunkSettingsAsync(db, cancellationToken)));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return ToModel(document);
+    }
+
+    public async Task<bool> DeleteDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
+        var document = await db.Documents.FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+        if (document is null)
+        {
+            return false;
+        }
+
+        db.Documents.Remove(document);
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<KnowledgeDocument?> ReindexDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
+        var document = await db.Documents
+            .FirstOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+
+        if (document is null)
+        {
+            return null;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.DocumentChunks
+            .Where(chunk => chunk.DocumentId == document.Id)
+            .ExecuteDeleteAsync(cancellationToken);
+        db.DocumentChunks.AddRange(BuildChunkEntities(ToModel(document), await ReadChunkSettingsAsync(db, cancellationToken)));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return ToModel(document);
+    }
+
     public async Task<OriginalDocumentFile?> GetOriginalFileAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
         var document = await db.Documents
             .AsNoTracking()
             .Where(item => item.Id == documentId)
@@ -172,6 +307,8 @@ public sealed class KnowledgeBaseService(
     public async Task<IReadOnlyDictionary<string, int>> SubjectCountsAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
+
         var counts = await db.Documents
             .AsNoTracking()
             .GroupBy(document => document.Subject)
@@ -224,6 +361,7 @@ public sealed class KnowledgeBaseService(
             subject,
             chapter,
             teacher,
+            uploadedBy,
             uploadedBy,
             content,
             DateTimeOffset.Now.AddMinutes(-index),
@@ -553,9 +691,9 @@ public sealed class KnowledgeBaseService(
             .Replace('Đ', 'D');
     }
 
-    private static IEnumerable<DocumentChunkEntity> BuildChunkEntities(KnowledgeDocument document)
+    private static IEnumerable<DocumentChunkEntity> BuildChunkEntities(KnowledgeDocument document, ChunkSettings settings)
     {
-        var chunks = ChunkText(document.Content).ToList();
+        var chunks = ChunkText(document.Content, settings).ToList();
         if (chunks.Count == 0)
         {
             chunks.Add(document.Content);
@@ -583,10 +721,11 @@ public sealed class KnowledgeBaseService(
             .Include(document => document.Chunks)
             .Where(document => !document.Chunks.Any())
             .ToListAsync(cancellationToken);
+        var settings = await ReadChunkSettingsAsync(db, cancellationToken);
 
         foreach (var document in documents)
         {
-            db.DocumentChunks.AddRange(BuildChunkEntities(ToModel(document)));
+            db.DocumentChunks.AddRange(BuildChunkEntities(ToModel(document), settings));
         }
 
         if (documents.Count > 0)
@@ -604,6 +743,9 @@ public sealed class KnowledgeBaseService(
 
             IF COL_LENGTH(N'[dbo].[Documents]', N'FileContent') IS NULL
                 ALTER TABLE [dbo].[Documents] ADD [FileContent] varbinary(max) NULL;
+
+            IF COL_LENGTH(N'[dbo].[Documents]', N'UploadedByUserId') IS NULL
+                ALTER TABLE [dbo].[Documents] ADD [UploadedByUserId] nvarchar(120) NOT NULL CONSTRAINT [DF_Documents_UploadedByUserId] DEFAULT N'';
 
             IF OBJECT_ID(N'[dbo].[DocumentChunks]', N'U') IS NULL
             BEGIN
@@ -663,6 +805,22 @@ public sealed class KnowledgeBaseService(
             IF COL_LENGTH(N'[dbo].[SourceMatches]', N'HasOriginalFile') IS NULL
                 ALTER TABLE [dbo].[SourceMatches] ADD [HasOriginalFile] bit NOT NULL CONSTRAINT [DF_SourceMatches_HasOriginalFile] DEFAULT 0;
 
+            IF OBJECT_ID(N'[dbo].[SystemSettings]', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [dbo].[SystemSettings] (
+                    [Key] nvarchar(120) NOT NULL,
+                    [Value] nvarchar(400) NOT NULL,
+                    [UpdatedAt] datetimeoffset NOT NULL,
+                    CONSTRAINT [PK_SystemSettings] PRIMARY KEY ([Key])
+                );
+            END
+
+            IF NOT EXISTS (SELECT 1 FROM [dbo].[SystemSettings] WHERE [Key] = N'ChunkSize')
+                INSERT INTO [dbo].[SystemSettings] ([Key], [Value], [UpdatedAt]) VALUES (N'ChunkSize', N'1100', SYSDATETIMEOFFSET());
+
+            IF NOT EXISTS (SELECT 1 FROM [dbo].[SystemSettings] WHERE [Key] = N'ChunkOverlap')
+                INSERT INTO [dbo].[SystemSettings] ([Key], [Value], [UpdatedAt]) VALUES (N'ChunkOverlap', N'180', SYSDATETIMEOFFSET());
+
             IF OBJECT_ID(N'[dbo].[Subjects]', N'U') IS NOT NULL
             BEGIN
                 UPDATE document
@@ -683,7 +841,46 @@ public sealed class KnowledgeBaseService(
             cancellationToken);
     }
 
-    private static List<string> ChunkText(string content)
+    private static async Task<ChunkSettings> ReadChunkSettingsAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var values = await db.SystemSettings
+            .AsNoTracking()
+            .Where(setting => setting.Key == ChunkSizeSettingKey || setting.Key == ChunkOverlapSettingKey)
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
+        var chunkSize = ParsePositiveSetting(values.GetValueOrDefault(ChunkSizeSettingKey), DefaultChunkSize);
+        var chunkOverlap = ParsePositiveSetting(values.GetValueOrDefault(ChunkOverlapSettingKey), DefaultChunkOverlap);
+        chunkOverlap = Math.Min(chunkOverlap, Math.Max(0, chunkSize - 1));
+
+        return new ChunkSettings(chunkSize, chunkOverlap);
+    }
+
+    private static async Task UpsertSettingAsync(AppDbContext db, string key, string value, CancellationToken cancellationToken)
+    {
+        var setting = await db.SystemSettings.FirstOrDefaultAsync(item => item.Key == key, cancellationToken);
+        if (setting is null)
+        {
+            db.SystemSettings.Add(new SystemSettingEntity
+            {
+                Key = key,
+                Value = value,
+                UpdatedAt = DateTimeOffset.Now
+            });
+            return;
+        }
+
+        setting.Value = value;
+        setting.UpdatedAt = DateTimeOffset.Now;
+    }
+
+    private static int ParsePositiveSetting(string? value, int fallback)
+    {
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 0
+            ? parsed
+            : fallback;
+    }
+
+    private static List<string> ChunkText(string content, ChunkSettings settings)
     {
         var normalized = Regex.Replace(content.Trim(), @"\r\n?", "\n");
         if (string.IsNullOrWhiteSpace(normalized))
@@ -706,14 +903,14 @@ public sealed class KnowledgeBaseService(
 
         foreach (var paragraph in paragraphs)
         {
-            if (paragraph.Length > ChunkTargetLength)
+            if (paragraph.Length > settings.ChunkSize)
             {
                 FlushChunk(builder, chunks);
-                chunks.AddRange(SplitLongParagraph(paragraph));
+                chunks.AddRange(SplitLongParagraph(paragraph, settings));
                 continue;
             }
 
-            if (builder.Length > 0 && builder.Length + paragraph.Length + 1 > ChunkTargetLength)
+            if (builder.Length > 0 && builder.Length + paragraph.Length + 1 > settings.ChunkSize)
             {
                 FlushChunk(builder, chunks);
             }
@@ -730,12 +927,12 @@ public sealed class KnowledgeBaseService(
         return chunks;
     }
 
-    private static IEnumerable<string> SplitLongParagraph(string paragraph)
+    private static IEnumerable<string> SplitLongParagraph(string paragraph, ChunkSettings settings)
     {
         var start = 0;
         while (start < paragraph.Length)
         {
-            var length = Math.Min(ChunkTargetLength, paragraph.Length - start);
+            var length = Math.Min(settings.ChunkSize, paragraph.Length - start);
             yield return paragraph.Substring(start, length).Trim();
 
             if (start + length >= paragraph.Length)
@@ -743,7 +940,7 @@ public sealed class KnowledgeBaseService(
                 break;
             }
 
-            start += Math.Max(1, ChunkTargetLength - ChunkOverlapLength);
+            start += Math.Max(1, settings.ChunkSize - settings.ChunkOverlap);
         }
     }
 
@@ -835,6 +1032,7 @@ public sealed class KnowledgeBaseService(
             document.Chapter,
             document.Teacher,
             document.UploadedBy,
+            document.UploadedByUserId,
             document.Content,
             document.UploadedAt,
             document.FileContent is { Length: > 0 });
@@ -874,6 +1072,7 @@ public sealed class KnowledgeBaseService(
             Chapter = document.Chapter,
             Teacher = document.Teacher,
             UploadedBy = document.UploadedBy,
+            UploadedByUserId = document.UploadedByUserId,
             Content = document.Content,
             UploadedAt = document.UploadedAt
         };

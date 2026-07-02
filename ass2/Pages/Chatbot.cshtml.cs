@@ -16,6 +16,7 @@ public class ChatbotModel(
     DemoAuthService authService,
     IHubContext<ChatHub> chatHub) : PageModel
 {
+    private const string EditDocumentsTab = "editDocumentsTab";
     public IReadOnlyList<KnowledgeDocument> Documents { get; private set; } = [];
     public IReadOnlyDictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>> DocumentChunks { get; private set; } = new Dictionary<Guid, IReadOnlyList<KnowledgeDocumentChunk>>();
     public IReadOnlyList<ChatTurn> InitialHistory { get; private set; } = [];
@@ -29,13 +30,14 @@ public class ChatbotModel(
     public IReadOnlyList<SubjectChapterSummary> SubjectChapterSummaries { get; private set; } = [];
     public IReadOnlyDictionary<string, int> SubjectCounts { get; private set; } = new Dictionary<string, int>();
     public BenchmarkDashboard? BenchmarkResults { get; private set; }
+    public ChunkSettings CurrentChunkSettings { get; private set; } = new(1100, 180);
     public string SessionId { get; private set; } = string.Empty;
     public string CurrentUserName { get; private set; } = string.Empty;
     public string CurrentUsername { get; private set; } = string.Empty;
     public string CurrentRole { get; private set; } = string.Empty;
     public bool CurrentUserIsDepartmentHead { get; private set; }
     public string CurrentManagedDepartment { get; private set; } = string.Empty;
-    public bool CanSeeUploadTab => CurrentRole == "Teacher" && CurrentUserIsDepartmentHead;
+    public bool CanSeeUploadTab => CurrentRole == "Teacher";
     public string? StatusMessage { get; private set; }
     public string? ErrorMessage { get; private set; }
     [BindProperty(SupportsGet = true)]
@@ -92,6 +94,15 @@ public class ChatbotModel(
     [BindProperty]
     public List<string> AssignSubjects { get; set; } = [];
 
+    [BindProperty]
+    public Guid DocumentId { get; set; }
+
+    [BindProperty]
+    public int ChunkSize { get; set; } = 1100;
+
+    [BindProperty]
+    public int ChunkOverlap { get; set; } = 180;
+
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         ActiveTab = NormalizeTab(ActiveTab);
@@ -138,7 +149,7 @@ public class ChatbotModel(
         if (!CanUploadDocument())
         {
             ErrorMessage = BuildPermissionMessage();
-            ActiveTab = "uploadTab";
+            ActiveTab = EditDocumentsTab;
             await LoadPageDataAsync(cancellationToken);
             return Page();
         }
@@ -151,24 +162,141 @@ public class ChatbotModel(
         var document = await knowledgeBase.AddDocumentAsync(
             UploadFile,
             Title,
-            Department,
+            authService.GetSubjectDepartment(Subject),
             Subject,
             Chapter,
-            Teacher,
             CurrentUserName,
+            CurrentUserName,
+            CurrentUsername,
             ManualContent,
             cancellationToken);
 
         await chatHub.Clients.All.SendAsync(
-            "ReceiveDocumentUploaded",
-            ToDocumentUploadedPayload(document),
+            "DocumentCreated",
+            new DocumentCreated(await ToDocumentChangedPayloadAsync(document, cancellationToken)),
             cancellationToken);
 
         StatusMessage = $"Da upload va index tai lieu: {document.Title}.";
         ModelState.Clear();
         Title = string.Empty;
         ManualContent = string.Empty;
-        ActiveTab = "uploadTab";
+        ActiveTab = EditDocumentsTab;
+        await LoadPageDataAsync(cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostUpdateDocumentAsync(CancellationToken cancellationToken)
+    {
+        ActiveTab = EditDocumentsTab;
+        var existing = await knowledgeBase.GetDocumentAsync(DocumentId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(Chapter) || !CanEditDocument(existing, Subject))
+        {
+            ErrorMessage = BuildPermissionMessage();
+            await LoadPageDataAsync(cancellationToken);
+            return Page();
+        }
+
+        var subject = string.IsNullOrWhiteSpace(Subject) ? existing!.Subject : Subject.Trim();
+        var department = authService.GetSubjectDepartment(subject);
+        var document = await knowledgeBase.UpdateDocumentAsync(
+            DocumentId,
+            UploadFile,
+            Title,
+            department,
+            subject,
+            Chapter,
+            CurrentUserName,
+            ManualContent,
+            cancellationToken);
+
+        if (document is null)
+        {
+            ErrorMessage = "Khong tim thay tai lieu can cap nhat.";
+            await LoadPageDataAsync(cancellationToken);
+            return Page();
+        }
+
+        await chatHub.Clients.All.SendAsync(
+            "DocumentUpdated",
+            new DocumentUpdated(await ToDocumentChangedPayloadAsync(document, cancellationToken)),
+            cancellationToken);
+
+        StatusMessage = $"Da cap nhat tai lieu: {document.Title}.";
+        ModelState.Clear();
+        await LoadPageDataAsync(cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostDeleteDocumentAsync(CancellationToken cancellationToken)
+    {
+        ActiveTab = EditDocumentsTab;
+        var existing = await knowledgeBase.GetDocumentAsync(DocumentId, cancellationToken);
+        if (!CanEditDocument(existing))
+        {
+            ErrorMessage = BuildPermissionMessage();
+            await LoadPageDataAsync(cancellationToken);
+            return Page();
+        }
+
+        if (await knowledgeBase.DeleteDocumentAsync(DocumentId, cancellationToken))
+        {
+            await chatHub.Clients.All.SendAsync(
+                "DocumentDeleted",
+                new DocumentDeleted(existing!.Id, existing.Title, existing.Department, existing.Subject, CurrentUsername),
+                cancellationToken);
+            StatusMessage = $"Da xoa tai lieu: {existing!.Title}.";
+        }
+        else
+        {
+            ErrorMessage = "Khong tim thay tai lieu can xoa.";
+        }
+
+        await LoadPageDataAsync(cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostReindexDocumentAsync(CancellationToken cancellationToken)
+    {
+        ActiveTab = EditDocumentsTab;
+        var existing = await knowledgeBase.GetDocumentAsync(DocumentId, cancellationToken);
+        if (!CanEditDocument(existing))
+        {
+            ErrorMessage = BuildPermissionMessage();
+            await LoadPageDataAsync(cancellationToken);
+            return Page();
+        }
+
+        var document = await knowledgeBase.ReindexDocumentAsync(DocumentId, cancellationToken);
+        if (document is null)
+        {
+            ErrorMessage = "Khong tim thay tai lieu can re-index.";
+            await LoadPageDataAsync(cancellationToken);
+            return Page();
+        }
+
+        await chatHub.Clients.All.SendAsync(
+            "DocumentReindexed",
+            new DocumentReindexed(await ToDocumentChangedPayloadAsync(document, cancellationToken)),
+            cancellationToken);
+
+        StatusMessage = $"Da re-index tai lieu: {document.Title}.";
+        await LoadPageDataAsync(cancellationToken);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostUpdateChunkSettingsAsync(CancellationToken cancellationToken)
+    {
+        LoadCurrentUser();
+        ActiveTab = "adminTab";
+        if (CurrentRole != "Admin")
+        {
+            ErrorMessage = "Chi Admin moi duoc cau hinh chunk.";
+            await LoadPageDataAsync(cancellationToken);
+            return Page();
+        }
+
+        CurrentChunkSettings = await knowledgeBase.UpdateChunkSettingsAsync(ChunkSize, ChunkOverlap, cancellationToken);
+        StatusMessage = $"Da cap nhat chunk size {CurrentChunkSettings.ChunkSize}, overlap {CurrentChunkSettings.ChunkOverlap}.";
         await LoadPageDataAsync(cancellationToken);
         return Page();
     }
@@ -236,20 +364,7 @@ public class ChatbotModel(
             return Page();
         }
 
-        var existingDepartmentHead = IsDepartmentHead
-            ? authService.GetDepartmentHead(ManagedDepartment)
-            : null;
-
-        if (IsDepartmentHead && string.IsNullOrWhiteSpace(ManagedDepartment))
-        {
-            ErrorMessage = "Hay chon bo mon khi set truong bo mon.";
-        }
-        else if (!string.IsNullOrWhiteSpace(existingDepartmentHead)
-            && !string.Equals(existingDepartmentHead, RoleUsername, StringComparison.OrdinalIgnoreCase))
-        {
-            ErrorMessage = $"Bo mon {ManagedDepartment.Trim()} da co truong bo mon: {GetUserLabel(existingDepartmentHead)}.";
-        }
-        else if (authService.UpdateUserRole(RoleUsername, Role, IsDepartmentHead, ManagedDepartment))
+        if (authService.UpdateUserRole(RoleUsername, Role, false, ManagedDepartment))
         {
             if (Role == "Teacher" && !authService.AssignTeacherSubjects(RoleUsername, AssignSubjects))
             {
@@ -274,54 +389,69 @@ public class ChatbotModel(
     {
         LoadCurrentUser();
 
-        if (CurrentRole != "Teacher" || !CurrentUserIsDepartmentHead)
+        if (CurrentRole != "Teacher")
         {
             return false;
         }
 
-        var department = Department.Trim();
+        var department = authService.GetSubjectDepartment(Subject);
         var subjectDepartment = authService.GetSubjectDepartment(Subject);
+        var assignedSubjects = authService.GetTeacherSubjects(CurrentUsername);
 
         return !string.IsNullOrWhiteSpace(department)
-            && string.Equals(department, CurrentManagedDepartment, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(Chapter)
+            && assignedSubjects.Contains(Subject, StringComparer.OrdinalIgnoreCase)
             && string.Equals(subjectDepartment, department, StringComparison.OrdinalIgnoreCase);
     }
 
     private string BuildPermissionMessage()
     {
-        if (CurrentRole == "Student")
+        return "Bạn không có quyền chỉnh sửa tài liệu này.";
+    }
+
+    private bool CanEditDocument(KnowledgeDocument? document, string? newSubject = null)
+    {
+        LoadCurrentUser();
+        if (document is null || CurrentRole != "Teacher")
         {
-            return "Hoc sinh chi duoc chat va xem tai lieu, khong duoc upload.";
+            return false;
         }
 
-        if (CurrentRole == "Teacher")
+        if (!string.Equals(document.UploadedByUserId, CurrentUsername, StringComparison.OrdinalIgnoreCase))
         {
-            if (!CurrentUserIsDepartmentHead)
-            {
-                return "Chi truong bo mon moi duoc upload tai lieu.";
-            }
-
-            return $"Ban chi duoc upload tai lieu thuoc bo mon {CurrentManagedDepartment}.";
+            return false;
         }
 
-        return "Chi truong bo mon moi co quyen upload tai lieu.";
+        var assignedSubjects = authService.GetTeacherSubjects(CurrentUsername);
+        if (!assignedSubjects.Contains(document.Subject, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var targetSubject = string.IsNullOrWhiteSpace(newSubject) ? document.Subject : newSubject.Trim();
+        return assignedSubjects.Contains(targetSubject, StringComparer.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(authService.GetSubjectDepartment(targetSubject));
     }
 
     private async Task LoadPageDataAsync(CancellationToken cancellationToken)
     {
         LoadCurrentUser();
-        if (CurrentRole == "Teacher" && CurrentUserIsDepartmentHead && !HttpContext.Request.HasFormContentType)
+        if (CurrentRole == "Teacher" && !HttpContext.Request.HasFormContentType)
         {
-            Department = CurrentManagedDepartment;
-            var firstSubject = authService.GetSubjectsByDepartment(CurrentManagedDepartment).FirstOrDefault();
+            var firstSubject = authService.GetTeacherSubjects(CurrentUsername).FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(firstSubject))
             {
                 Subject = firstSubject;
+                Department = authService.GetSubjectDepartment(firstSubject);
             }
+            Teacher = CurrentUserName;
         }
 
         Documents = await knowledgeBase.GetDocumentsAsync(cancellationToken);
         DocumentChunks = await knowledgeBase.GetChunksByDocumentAsync(Documents.Select(document => document.Id), cancellationToken);
+        CurrentChunkSettings = await knowledgeBase.GetChunkSettingsAsync(cancellationToken);
+        ChunkSize = CurrentChunkSettings.ChunkSize;
+        ChunkOverlap = CurrentChunkSettings.ChunkOverlap;
         SubjectCatalog = authService.SubjectCatalog;
         DepartmentOptions = Documents
             .Select(document => document.Department)
@@ -337,13 +467,11 @@ public class ChatbotModel(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(value => value)
             .ToList();
-        UploadSubjectOptions = CurrentRole == "Teacher" && CurrentUserIsDepartmentHead
-            ? authService.GetSubjectsByDepartment(CurrentManagedDepartment)
+        UploadSubjectOptions = CurrentRole == "Teacher"
+            ? authService.GetTeacherSubjects(CurrentUsername)
             : [];
         VisibleSubjectOptions = CurrentRole == "Teacher"
-            ? CurrentUserIsDepartmentHead
-                ? authService.GetSubjectsByDepartment(CurrentManagedDepartment)
-                : authService.GetTeacherSubjects(CurrentUsername)
+            ? authService.GetTeacherSubjects(CurrentUsername)
             : [];
         ChapterOptions = Documents
             .Select(document => document.Chapter)
@@ -393,6 +521,11 @@ public class ChatbotModel(
         return true;
     }
 
+    public bool CanManageDocument(KnowledgeDocument document)
+    {
+        return CanEditDocument(document);
+    }
+
     public string GetSubjectOwnerLabel(string subject)
     {
         var ownerUsernames = authService.GetSubjectOwners(subject);
@@ -424,14 +557,22 @@ public class ChatbotModel(
 
     private static string NormalizeTab(string? tab)
     {
-        return tab is "chatTab" or "documentsTab" or "uploadTab" or "adminTab" or "subjectsTab" or "benchmarkTab"
-            ? tab
-            : "chatTab";
+        return tab switch
+        {
+            "chatTab" or "documentsTab" or EditDocumentsTab or "adminTab" or "subjectsTab" or "benchmarkTab" => tab,
+            "uploadTab" => EditDocumentsTab,
+            _ => "chatTab"
+        };
     }
 
-    private static DocumentUploadedPayload ToDocumentUploadedPayload(KnowledgeDocument document)
+    private async Task<DocumentChangedPayload> ToDocumentChangedPayloadAsync(KnowledgeDocument document, CancellationToken cancellationToken)
     {
-        return new DocumentUploadedPayload(
+        var chunks = await knowledgeBase.GetChunksByDocumentAsync([document.Id], cancellationToken);
+        var chunkCount = chunks.TryGetValue(document.Id, out var documentChunks)
+            ? documentChunks.Count
+            : 0;
+
+        return new DocumentChangedPayload(
             document.Id,
             document.Title,
             document.FileName,
@@ -440,10 +581,12 @@ public class ChatbotModel(
             document.Chapter,
             document.Teacher,
             document.UploadedBy,
+            document.UploadedByUserId,
             document.Content,
             document.UploadedAt.ToString("dd/MM HH:mm"),
             document.HasOriginalFile,
-            $"/Chatbot?handler=DownloadDocument&id={document.Id}");
+            $"/Chatbot?handler=DownloadDocument&id={document.Id}",
+            chunkCount);
     }
 }
 

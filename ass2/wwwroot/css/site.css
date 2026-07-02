@@ -1495,3 +1495,29 @@ textarea:focus {
   max-height: 220px;
   margin: 0;
 }
+
+.teacher-document-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.document-edit-form {
+  display: grid;
+  gap: 12px;
+}
+
+.document-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.danger-action {
+  color: var(--danger);
+}
+
+.danger-action:hover {
+  color: #fff;
+  background: var(--danger);
+}
